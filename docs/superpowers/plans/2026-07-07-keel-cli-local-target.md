@@ -870,3 +870,9 @@ gateway (~$32/mo), which violates the approved cost posture.
 - **Spec coverage (Plan A scope):** Dockerfile-required ✔ (build step is `docker build`), interactive CLI that asks details ✔ (`keel new` prompts), local target ✔, env vars ✔, list/logs/destroy ✔, CLI validates Dockerfile presence — gap found and fixed: validation happens implicitly via docker build failure; acceptable for local target, revisit in Plan B where a pre-flight check saves a CodeBuild round-trip.
 - **Placeholder scan:** no TBDs; every code step has complete code; commands have expected output.
 - **Type consistency:** `Exec` injected consistently; `AppConfig` fields match across Tasks 2-5; `containerName` used in both deploy and destroy paths.
+
+## Plan B hardening carry-overs (from final branch review, 2026-07-08)
+
+1. Anchor `REPO_RE` (src/config.ts) with `$` before the repo URL is fed to CodeBuild/webhook wiring.
+2. Validate `branch`/`env`/`healthPath` types in `validateAppConfig` when hardening config for the AWS registry.
+3. Capture stderr into thrown errors in the exec helpers — needed once deploys run non-interactively (webhook path).
