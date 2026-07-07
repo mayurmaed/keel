@@ -7,4 +7,11 @@ describe("program", () => {
     expect(p.name()).toBe("keel");
     expect(p.version()).toBe("0.1.0");
   });
+
+  it("registers all phase-1 commands", () => {
+    const names = buildProgram().commands.map((c) => c.name());
+    for (const n of ["new", "deploy", "list", "logs", "destroy", "env"]) {
+      expect(names).toContain(n);
+    }
+  });
 });
