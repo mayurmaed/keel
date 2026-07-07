@@ -31,3 +31,19 @@ export async function deployLocal(cfg: AppConfig, dir: string, exec: Exec = shel
   ]);
   return `http://localhost:${cfg.port}`;
 }
+
+export async function listLocal(exec: Exec = shellExec): Promise<string[]> {
+  const out = await exec("docker", [
+    "ps", "--filter", "label=keel=1",
+    "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}",
+  ]);
+  return out ? out.split("\n") : [];
+}
+
+export async function destroyLocal(name: string, exec: Exec = shellExec): Promise<void> {
+  await exec("docker", ["rm", "-f", containerName(name)]);
+}
+
+export function logsLocal(name: string, follow: boolean): void {
+  spawn("docker", ["logs", ...(follow ? ["-f"] : []), containerName(name)], { stdio: "inherit" });
+}

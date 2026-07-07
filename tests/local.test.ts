@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deployLocal, type Exec } from "../src/targets/local";
+import { deployLocal, listLocal, destroyLocal, type Exec } from "../src/targets/local";
 import type { AppConfig } from "../src/config";
 
 const cfg: AppConfig = {
@@ -43,5 +43,31 @@ describe("deployLocal", () => {
       return "";
     };
     await expect(deployLocal(cfg, ".", exec)).rejects.toThrow(/exited 1/);
+  });
+});
+
+describe("listLocal", () => {
+  it("lists keel containers via label filter", async () => {
+    const { calls, exec } = fakeExec();
+    await listLocal(exec);
+    expect(calls[0]).toEqual([
+      "docker", "ps", "--filter", "label=keel=1",
+      "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}",
+    ]);
+  });
+
+  it("returns [] when output is empty and lines otherwise", async () => {
+    expect(await listLocal(async () => "")).toEqual([]);
+    expect(await listLocal(async () => "keel-web\tUp 2 minutes\t3000")).toEqual([
+      "keel-web\tUp 2 minutes\t3000",
+    ]);
+  });
+});
+
+describe("destroyLocal", () => {
+  it("force-removes the container by name", async () => {
+    const { calls, exec } = fakeExec();
+    await destroyLocal("web", exec);
+    expect(calls[0]).toEqual(["docker", "rm", "-f", "keel-web"]);
   });
 });
