@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { deployLocal, listLocal, destroyLocal, type Exec } from "../src/targets/local";
+import { describe, it, expect, vi } from "vitest";
+import { deployLocal, listLocal, destroyLocal, shellExec, captureExec, type Exec } from "../src/targets/local";
 import type { AppConfig } from "../src/config";
 
 const cfg: AppConfig = {
@@ -69,5 +69,25 @@ describe("destroyLocal", () => {
     const { calls, exec } = fakeExec();
     await destroyLocal("web", exec);
     expect(calls[0]).toEqual(["docker", "rm", "-f", "keel-web"]);
+  });
+});
+
+describe("exec implementations", () => {
+  it("shellExec streams and returns stdout", async () => {
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const result = await shellExec("node", ["-e", "process.stdout.write('ping')"]);
+    expect(result).toBe("ping");
+    // spy is called with Buffer containing "ping"
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][0].toString()).toContain("ping");
+    spy.mockRestore();
+  });
+
+  it("captureExec returns stdout without streaming", async () => {
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const result = await captureExec("node", ["-e", "process.stdout.write('ping')"]);
+    expect(result).toBe("ping");
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
