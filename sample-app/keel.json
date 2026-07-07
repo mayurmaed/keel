@@ -1,0 +1,10 @@
+{
+  "branch": "main",
+  "env": {
+    "GREETING": "world"
+  },
+  "healthPath": "/",
+  "name": "hello",
+  "port": 3000,
+  "target": "local"
+}

@@ -3,19 +3,25 @@ import type { AppConfig } from "../config.js";
 
 export type Exec = (cmd: string, args: string[]) => Promise<string>;
 
-export const shellExec: Exec = (cmd, args) =>
-  new Promise((resolve, reject) => {
+function exec(cmd: string, args: string[], stream: boolean): Promise<string> {
+  return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "inherit"] });
     let out = "";
     p.stdout.on("data", (d: Buffer) => {
       out += d.toString();
-      process.stdout.write(d);
+      if (stream) process.stdout.write(d);
     });
     p.on("error", reject);
     p.on("close", (code) =>
       code === 0 ? resolve(out.trim()) : reject(new Error(`${cmd} ${args[0]} exited ${code}`)),
     );
   });
+}
+
+// streams stdout live (docker build progress) and returns the captured text
+export const shellExec: Exec = (cmd, args) => exec(cmd, args, true);
+// captures stdout only — for commands whose output the caller reformats/prints itself
+export const captureExec: Exec = (cmd, args) => exec(cmd, args, false);
 
 export const containerName = (app: string) => `keel-${app}`;
 
@@ -32,7 +38,7 @@ export async function deployLocal(cfg: AppConfig, dir: string, exec: Exec = shel
   return `http://localhost:${cfg.port}`;
 }
 
-export async function listLocal(exec: Exec = shellExec): Promise<string[]> {
+export async function listLocal(exec: Exec = captureExec): Promise<string[]> {
   const out = await exec("docker", [
     "ps", "--filter", "label=keel=1",
     "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}",
@@ -40,7 +46,7 @@ export async function listLocal(exec: Exec = shellExec): Promise<string[]> {
   return out ? out.split("\n") : [];
 }
 
-export async function destroyLocal(name: string, exec: Exec = shellExec): Promise<void> {
+export async function destroyLocal(name: string, exec: Exec = captureExec): Promise<void> {
   await exec("docker", ["rm", "-f", containerName(name)]);
 }
 
