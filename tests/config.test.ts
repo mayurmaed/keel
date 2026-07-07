@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { validateAppConfig, loadAppConfig, saveAppConfig, type AppConfig } from "../src/config.js";
+import { validateAppConfig, loadAppConfig, saveAppConfig, type AppConfig } from "../src/config";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "keel-test-"));
 
