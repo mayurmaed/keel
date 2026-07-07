@@ -6,14 +6,22 @@
 
 ## Vision (whole platform)
 
-A personal platform-as-a-service, built by composing AWS managed services behind
-a control plane Mayur owns, usable across all current and future products, and
-structured so it can later be productized and sold. Phases:
+A BYO-AWS platform-as-a-service: a tool (not a hosted service) that deploys
+and manages apps, databases, and auth **in the user's own AWS account**. Mayur
+is user #1; the product direction is open-source distribution (open-core
+monetization later — the Coolify/SST model), positioned as the escape hatch
+for teams outgrowing Render/Vercel/Supabase pricing. Decided 2026-07-07: no
+hosted/multi-tenant offering (Option 2 rejected — reselling compute against
+funded incumbents with 24/7 ops burden). Every user runs their own instance in
+their own account, so tenant isolation comes free.
+
+Phases:
 
 1. **Deploy pipeline** (this spec) — the Render replacement.
 2. **Postgres provisioning** — shared RDS instance, per-project databases/users, `keel db create`.
 3. **Auth service** — signup/login, JWTs, permissions (the Supabase-Auth part).
-4. **Multi-tenancy + billing** — to sell it.
+4. **Open-source packaging** — docs, `keel setup` hardened for strangers'
+   AWS accounts, sample app templates, license + repo hygiene.
 
 Each phase gets its own spec → plan → implementation cycle. Nothing in this
 spec builds ahead for later phases beyond keeping interfaces clean.
