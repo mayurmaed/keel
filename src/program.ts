@@ -3,6 +3,7 @@ import { loadAppConfig } from "./config.js";
 import { deployLocal, listLocal, logsLocal, destroyLocal } from "./targets/local.js";
 import { newCommand } from "./commands/new.js";
 import { envCommand } from "./commands/env.js";
+import { setupCommand } from "./commands/setup.js";
 
 function localOnly(target: string): void {
   if (target !== "local") {
@@ -74,6 +75,15 @@ export function buildProgram(): Command {
       }
       envCommand(action, pairs);
     });
+
+  program
+    .command("setup")
+    .description("one-time: deploy the keel control plane into your AWS account")
+    .option("--region <region>")
+    .option("--domain <domain>", "base domain for app URLs (stored now, wired in Plan B2)")
+    .option("--github-token <token>", "token for cloning private repos (stored in SSM)")
+    .option("--yes", "non-interactive: accept defaults")
+    .action((opts) => setupCommand(opts));
 
   return program;
 }
