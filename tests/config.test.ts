@@ -23,6 +23,27 @@ describe("validateAppConfig", () => {
       validateAppConfig({ name: "web", port: 80, target: "aws", repo: "https://github.com/me/web" }),
     ).toEqual([]);
   });
+
+  it("rejects repo URLs with trailing garbage, accepts optional .git", () => {
+    expect(
+      validateAppConfig({ name: "web", port: 80, target: "aws", repo: "https://github.com/me/web/extra" }),
+    ).toHaveLength(1);
+    expect(
+      validateAppConfig({ name: "web", port: 80, target: "aws", repo: "https://github.com/me/web.git" }),
+    ).toEqual([]);
+  });
+
+  it("rejects wrong types for branch, env, healthPath, dir", () => {
+    const errs = validateAppConfig({
+      name: "web", port: 80, target: "local",
+      branch: 5, env: "oops", healthPath: "nope", dir: "/abs",
+    });
+    expect(errs).toHaveLength(4);
+  });
+
+  it("accepts a relative dir", () => {
+    expect(validateAppConfig({ name: "web", port: 80, target: "local", dir: "sample-app" })).toEqual([]);
+  });
 });
 
 describe("load/save", () => {

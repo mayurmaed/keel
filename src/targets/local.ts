@@ -3,25 +3,32 @@ import type { AppConfig } from "../config.js";
 
 export type Exec = (cmd: string, args: string[]) => Promise<string>;
 
-function exec(cmd: string, args: string[], stream: boolean): Promise<string> {
+function run(cmd: string, args: string[], stream: boolean): Promise<string> {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "inherit"] });
+    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
+    let err = "";
     p.stdout.on("data", (d: Buffer) => {
       out += d.toString();
       if (stream) process.stdout.write(d);
     });
+    p.stderr.on("data", (d: Buffer) => {
+      err += d.toString();
+      if (stream) process.stderr.write(d);
+    });
     p.on("error", reject);
     p.on("close", (code) =>
-      code === 0 ? resolve(out.trim()) : reject(new Error(`${cmd} ${args[0]} exited ${code}`)),
+      code === 0
+        ? resolve(out.trim())
+        : reject(new Error(`${cmd} ${args[0]} exited ${code}${err ? `: ${err.trim().slice(-2000)}` : ""}`)),
     );
   });
 }
 
 // streams stdout live (docker build progress) and returns the captured text
-export const shellExec: Exec = (cmd, args) => exec(cmd, args, true);
+export const shellExec: Exec = (cmd, args) => run(cmd, args, true);
 // captures stdout only — for commands whose output the caller reformats/prints itself
-export const captureExec: Exec = (cmd, args) => exec(cmd, args, false);
+export const captureExec: Exec = (cmd, args) => run(cmd, args, false);
 
 export const containerName = (app: string) => `keel-${app}`;
 

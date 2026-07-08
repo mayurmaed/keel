@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 export const CONFIG_FILE = "keel.json";
 const NAME_RE = /^[a-z][a-z0-9-]{1,31}$/;
-const REPO_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+/;
+const REPO_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+?(?:\.git)?$/;
 
 export interface AppConfig {
   name: string;
@@ -13,6 +13,7 @@ export interface AppConfig {
   env: Record<string, string>;
   healthPath: string;
   repo?: string;
+  dir?: string;
 }
 
 export function validateAppConfig(c: unknown): string[] {
@@ -22,6 +23,20 @@ export function validateAppConfig(c: unknown): string[] {
   if (!Number.isInteger(cfg?.port) || cfg.port! < 1 || cfg.port! > 65535) errs.push("port must be an integer 1-65535");
   if (cfg?.target !== "local" && cfg?.target !== "aws") errs.push('target must be "local" or "aws"');
   if (cfg?.target === "aws" && !REPO_RE.test(cfg?.repo ?? "")) errs.push("repo must be an https://github.com/... URL for the aws target");
+  if (cfg?.branch !== undefined && typeof cfg.branch !== "string") errs.push("branch must be a string");
+  if (
+    cfg?.env !== undefined &&
+    (typeof cfg.env !== "object" || cfg.env === null || Array.isArray(cfg.env) ||
+      Object.values(cfg.env).some((v) => typeof v !== "string"))
+  ) errs.push("env must be an object of string values");
+  if (
+    cfg?.healthPath !== undefined &&
+    (typeof cfg.healthPath !== "string" || !cfg.healthPath.startsWith("/"))
+  ) errs.push('healthPath must be a string starting with "/"');
+  if (
+    cfg?.dir !== undefined &&
+    (typeof cfg.dir !== "string" || cfg.dir.startsWith("/") || cfg.dir.includes(".."))
+  ) errs.push("dir must be a relative path inside the repo");
   return errs;
 }
 
