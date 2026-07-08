@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   putApp, getApp, listDeploys, ensureWebhookSecret, setEnvVar, listEnvVars, newDeployId,
   type AppRecord,
-} from "../src/aws/registry.js";
+} from "../src/aws/registry";
 
 function fake(answers: (cmd: string, input: any) => unknown) {
   const calls: Array<{ cmd: string; input: any }> = [];
@@ -70,6 +70,21 @@ describe("registry", () => {
     await setEnvVar(deps, "web", "API_KEY", "abc");
     expect(calls[0].input).toMatchObject({ Name: "/keel/web/env/API_KEY", Value: "abc", Type: "SecureString", Overwrite: true });
     expect(await listEnvVars(deps, "web")).toEqual({ API_KEY: "abc" });
+  });
+
+  it("listEnvVars paginates through SSM results", async () => {
+    let callCount = 0;
+    const { calls, deps } = fake((cmd) => {
+      if (cmd === "GetParametersByPathCommand") {
+        callCount++;
+        if (callCount === 1) return { Parameters: [{ Name: "/keel/web/env/A", Value: "1" }], NextToken: "t1" };
+        return { Parameters: [{ Name: "/keel/web/env/B", Value: "2" }] };
+      }
+      return {};
+    });
+    const result = await listEnvVars(deps, "web");
+    expect(result).toEqual({ A: "1", B: "2" });
+    expect(calls[1].input.NextToken).toBe("t1");
   });
 
   it("newDeployId matches the Lambda's format", () => {

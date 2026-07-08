@@ -110,8 +110,14 @@ export async function unsetEnvVar(d: RegistryDeps, app: string, key: string): Pr
 }
 
 export async function listEnvVars(d: RegistryDeps, app: string): Promise<Record<string, string>> {
-  const res = await d.ssm.send(new GetParametersByPathCommand({ Path: envPath(app), WithDecryption: true }));
   const out: Record<string, string> = {};
-  for (const p of res.Parameters ?? []) out[String(p.Name).split("/").pop()!] = p.Value as string;
+  let NextToken: string | undefined;
+  do {
+    const res = await d.ssm.send(
+      new GetParametersByPathCommand({ Path: envPath(app), WithDecryption: true, NextToken }),
+    );
+    for (const p of res.Parameters ?? []) out[String(p.Name).split("/").pop()!] = p.Value as string;
+    NextToken = res.NextToken;
+  } while (NextToken);
   return out;
 }
