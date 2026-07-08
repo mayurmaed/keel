@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setupCommand } from "../src/commands/setup.js";
+import { setupCommand } from "../src/commands/setup";
 
 function fakeClients() {
   const calls: Array<{ client: string; cmd: string; input: any }> = [];
