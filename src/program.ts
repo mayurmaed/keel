@@ -1,13 +1,14 @@
 import { Command } from "commander";
 import { loadAppConfig } from "./config.js";
 import { deployLocal, listLocal, logsLocal, destroyLocal } from "./targets/local.js";
+import { registerAwsApp, deployAws, statusAws, envAws } from "./targets/aws.js";
 import { newCommand } from "./commands/new.js";
 import { envCommand } from "./commands/env.js";
 import { setupCommand } from "./commands/setup.js";
 
 function localOnly(target: string): void {
   if (target !== "local") {
-    throw new Error('the aws target ships in Plan B — set "target": "local" in keel.json for now');
+    throw new Error('this command reaches AWS in Plan B2 — use target "local" for now');
   }
 }
 
@@ -24,14 +25,21 @@ export function buildProgram(): Command {
     .option("--target <target>", '"local" or "aws"')
     .option("--repo <url>")
     .option("--branch <branch>")
-    .action((opts) => newCommand(opts));
+    .action(async (opts) => {
+      await newCommand(opts);
+      const cfg = loadAppConfig(process.cwd());
+      if (cfg.target === "aws") await registerAwsApp(cfg);
+    });
 
   program
     .command("deploy")
     .description("build and run the app in the current directory")
     .action(async () => {
       const cfg = loadAppConfig(process.cwd());
-      localOnly(cfg.target);
+      if (cfg.target === "aws") {
+        await deployAws(cfg);
+        return;
+      }
       const url = await deployLocal(cfg, process.cwd());
       console.log(`live: ${url}`);
     });
@@ -69,11 +77,26 @@ export function buildProgram(): Command {
     .description("manage app env vars: keel env set K=V ... | unset K ... | list")
     .argument("<action>", "set | unset | list")
     .argument("[pairs...]")
-    .action((action: string, pairs: string[]) => {
+    .action(async (action: string, pairs: string[]) => {
       if (action !== "set" && action !== "unset" && action !== "list") {
         throw new Error(`unknown env action "${action}" — use set, unset, or list`);
       }
-      envCommand(action, pairs);
+      const cfg = loadAppConfig(process.cwd());
+      if (cfg.target === "aws") await envAws(action, pairs, cfg);
+      else envCommand(action, pairs);
+    });
+
+  program
+    .command("status")
+    .description("recent deploys (aws) or running container (local)")
+    .action(async () => {
+      const cfg = loadAppConfig(process.cwd());
+      if (cfg.target === "aws") {
+        await statusAws(cfg);
+        return;
+      }
+      const lines = await listLocal();
+      console.log(lines.length ? lines.join("\n") : "no keel apps running");
     });
 
   program
