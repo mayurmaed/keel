@@ -1,0 +1,254 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: keel control plane - serverless, ~$0/mo idle
+
+Parameters:
+  WebhookCode:
+    Type: String
+    Description: Inline source for the webhook Lambda (max 4096 chars)
+
+Resources:
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: keel
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+  Repo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: keel-apps
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: keel
+
+  AppLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /keel/apps
+      RetentionInDays: 30
+
+  BuildLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /keel/build
+      RetentionInDays: 14
+
+  TaskExecRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: keel-task-exec
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ssm-env
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameters
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*
+
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: keel-build
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: codebuild.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: keel-build
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub ${BuildLogs.Arn}:*
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                Resource: !GetAtt Repo.Arn
+              - Effect: Allow
+                Action: [ecs:RegisterTaskDefinition, ecs:DescribeTaskDefinition]
+                Resource: "*"
+              - Effect: Allow
+                Action: [ecs:DescribeServices, ecs:UpdateService]
+                Resource: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/keel/keel-*
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt TaskExecRole.Arn
+              - Effect: Allow
+                Action: [dynamodb:UpdateItem, dynamodb:PutItem]
+                Resource: !GetAtt Table.Arn
+              - Effect: Allow
+                Action: [ssm:GetParameter, ssm:GetParametersByPath]
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*
+
+  Build:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: keel-build
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 30
+      Artifacts: { Type: NO_ARTIFACTS }
+      LogsConfig:
+        CloudWatchLogs: { Status: ENABLED, GroupName: !Ref BuildLogs }
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - { Name: ECR_URI, Value: !GetAtt Repo.RepositoryUri }
+          - { Name: TABLE, Value: !Ref Table }
+          - { Name: CLUSTER, Value: !Ref Cluster }
+          - { Name: EXEC_ROLE, Value: !GetAtt TaskExecRole.Arn }
+          - { Name: LOG_GROUP, Value: !Ref AppLogs }
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - |
+                  set -e
+                  export DEPLOY_ID="${DEPLOY_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+                  export ACCOUNT=$(echo "$CODEBUILD_BUILD_ARN" | cut -d: -f5)
+                  mark() { aws dynamodb update-item --table-name "$TABLE" --key "{\"PK\":{\"S\":\"APP#$APP\"},\"SK\":{\"S\":\"DEPLOY#$DEPLOY_ID\"}}" --update-expression "SET #s = :s, updatedAt = :t" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values "{\":s\":{\"S\":\"$1\"},\":t\":{\"S\":\"$(date -u +%FT%TZ)\"}}"; }
+                  mark building
+                  CLONE_URL="$REPO_URL"
+                  TOKEN=$(aws ssm get-parameter --name /keel/github-token --with-decryption --query Parameter.Value --output text 2>/dev/null || true)
+                  if [ -n "$TOKEN" ] && [ "$TOKEN" != "None" ]; then CLONE_URL=$(echo "$REPO_URL" | sed "s|https://|https://x-access-token:$TOKEN@|"); fi
+                  git clone --depth 1 --branch "$BRANCH" "$CLONE_URL" /tmp/app
+                  export COMMIT=$(git -C /tmp/app rev-parse --short HEAD)
+                  aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_URI%%/*}"
+            build:
+              commands:
+                - |
+                  set -e
+                  cd "/tmp/app/${APP_DIR:-.}"
+                  docker build -t "$ECR_URI:$APP-$COMMIT" -t "$ECR_URI:$APP" .
+            post_build:
+              commands:
+                - |
+                  set -e
+                  mark() { aws dynamodb update-item --table-name "$TABLE" --key "{\"PK\":{\"S\":\"APP#$APP\"},\"SK\":{\"S\":\"DEPLOY#$DEPLOY_ID\"}}" --update-expression "SET #s = :s, updatedAt = :t" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values "{\":s\":{\"S\":\"$1\"},\":t\":{\"S\":\"$(date -u +%FT%TZ)\"}}"; }
+                  if [ "$CODEBUILD_BUILD_SUCCEEDING" != "1" ]; then mark failed; exit 1; fi
+                  docker push "$ECR_URI:$APP-$COMMIT"
+                  docker push "$ECR_URI:$APP"
+                  SECRETS=$(aws ssm get-parameters-by-path --path "/keel/$APP/env" --query "Parameters[].Name" --output json | jq -c --arg r "$AWS_REGION" --arg a "$ACCOUNT" '[.[] | {name: (split("/")[-1]), valueFrom: ("arn:aws:ssm:" + $r + ":" + $a + ":parameter" + .)}]')
+                  printf '{"family":"keel-%s","networkMode":"awsvpc","requiresCompatibilities":["FARGATE"],"cpu":"%s","memory":"%s","executionRoleArn":"%s","containerDefinitions":[{"name":"app","image":"%s:%s-%s","essential":true,"portMappings":[{"containerPort":%s}],"secrets":%s,"logConfiguration":{"logDriver":"awslogs","options":{"awslogs-group":"%s","awslogs-region":"%s","awslogs-stream-prefix":"%s"}}}]}' "$APP" "$CPU" "$MEMORY" "$EXEC_ROLE" "$ECR_URI" "$APP" "$COMMIT" "$PORT" "$SECRETS" "$LOG_GROUP" "$AWS_REGION" "$APP" > /tmp/taskdef.json
+                  aws ecs register-task-definition --cli-input-json file:///tmp/taskdef.json
+                  if [ -n "$(aws ecs describe-services --cluster "$CLUSTER" --services "keel-$APP" --query "services[?status=='ACTIVE'].serviceName" --output text)" ]; then aws ecs update-service --cluster "$CLUSTER" --service "keel-$APP" --task-definition "keel-$APP" --force-new-deployment >/dev/null; fi
+                  mark live
+
+  HookRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: keel-webhook
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: keel-webhook
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Resource: !GetAtt Table.Arn
+              - Effect: Allow
+                Action: codebuild:StartBuild
+                Resource: !GetAtt Build.Arn
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*/webhook-secret
+
+  Hook:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: keel-webhook
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Timeout: 10
+      Role: !GetAtt HookRole.Arn
+      Environment:
+        Variables:
+          TABLE: !Ref Table
+          PROJECT: !Ref Build
+      Code:
+        ZipFile: !Ref WebhookCode
+
+  Api:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: keel-hooks
+      ProtocolType: HTTP
+
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref Api
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt Hook.Arn
+      PayloadFormatVersion: "2.0"
+
+  ApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: POST /hook/{app}
+      Target: !Sub integrations/${ApiIntegration}
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref Api
+      StageName: $default
+      AutoDeploy: true
+
+  HookPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Hook
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*/*/hook/*
+
+Outputs:
+  TableName: { Value: !Ref Table }
+  ClusterName: { Value: !Ref Cluster }
+  EcrRepoUri: { Value: !GetAtt Repo.RepositoryUri }
+  BuildProject: { Value: !Ref Build }
+  WebhookBase: { Value: !Sub "${Api.ApiEndpoint}/hook" }
+  TaskExecRoleArn: { Value: !GetAtt TaskExecRole.Arn }
+  LogGroup: { Value: !Ref AppLogs }
