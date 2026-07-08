@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readGlobalConfig, writeGlobalConfig } from "../src/aws/globalconfig.js";
+import { readGlobalConfig, writeGlobalConfig } from "../src/aws/globalconfig";
 
 const tmpPath = () => join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");
 
