@@ -4,6 +4,9 @@ Deploy apps to your own AWS account (or local Docker). Render/Supabase
 replacement you run yourself. Phase 1: deploy pipeline. Spec and plans in
 `docs/superpowers/`.
 
+**→ [docs/GUIDE.md](docs/GUIDE.md)** — architecture, deploy-flow diagrams, and
+how to use and test every piece.
+
 ## Quickstart (local target)
 
 Requirements: Node ≥ 20, Docker. Your app repo must contain a `Dockerfile`.
