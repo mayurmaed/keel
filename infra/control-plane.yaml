@@ -142,18 +142,26 @@ Resources:
                   export ACCOUNT=$(echo "$CODEBUILD_BUILD_ARN" | cut -d: -f5)
                   mark() { aws dynamodb update-item --table-name "$TABLE" --key "{\"PK\":{\"S\":\"APP#$APP\"},\"SK\":{\"S\":\"DEPLOY#$DEPLOY_ID\"}}" --update-expression "SET #s = :s, updatedAt = :t" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values "{\":s\":{\"S\":\"$1\"},\":t\":{\"S\":\"$(date -u +%FT%TZ)\"}}"; }
                   mark building
-                  CLONE_URL="$REPO_URL"
                   TOKEN=$(aws ssm get-parameter --name /keel/github-token --with-decryption --query Parameter.Value --output text 2>/dev/null || true)
-                  if [ -n "$TOKEN" ] && [ "$TOKEN" != "None" ]; then CLONE_URL=$(echo "$REPO_URL" | sed "s|https://|https://x-access-token:$TOKEN@|"); fi
-                  git clone --depth 1 --branch "$BRANCH" "$CLONE_URL" /tmp/app
+                  if [ -n "$TOKEN" ] && [ "$TOKEN" != "None" ]; then
+                    git clone -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')" --depth 1 --branch "$BRANCH" "$REPO_URL" /tmp/app
+                  else
+                    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" /tmp/app
+                  fi
                   export COMMIT=$(git -C /tmp/app rev-parse --short HEAD)
                   aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_URI%%/*}"
+              finally:
+                - |
+                  [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ] || [ -z "$DEPLOY_ID" ] || aws dynamodb update-item --table-name "$TABLE" --key "{\"PK\":{\"S\":\"APP#$APP\"},\"SK\":{\"S\":\"DEPLOY#$DEPLOY_ID\"}}" --update-expression "SET #s = :s, updatedAt = :t" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values "{\":s\":{\"S\":\"failed\"},\":t\":{\"S\":\"$(date -u +%FT%TZ)\"}}" || true
             build:
               commands:
                 - |
                   set -e
                   cd "/tmp/app/${APP_DIR:-.}"
                   docker build -t "$ECR_URI:$APP-$COMMIT" -t "$ECR_URI:$APP" .
+              finally:
+                - |
+                  [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ] || [ -z "$DEPLOY_ID" ] || aws dynamodb update-item --table-name "$TABLE" --key "{\"PK\":{\"S\":\"APP#$APP\"},\"SK\":{\"S\":\"DEPLOY#$DEPLOY_ID\"}}" --update-expression "SET #s = :s, updatedAt = :t" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values "{\":s\":{\"S\":\"failed\"},\":t\":{\"S\":\"$(date -u +%FT%TZ)\"}}" || true
             post_build:
               commands:
                 - |
@@ -167,6 +175,9 @@ Resources:
                   aws ecs register-task-definition --cli-input-json file:///tmp/taskdef.json
                   if [ -n "$(aws ecs describe-services --cluster "$CLUSTER" --services "keel-$APP" --query "services[?status=='ACTIVE'].serviceName" --output text)" ]; then aws ecs update-service --cluster "$CLUSTER" --service "keel-$APP" --task-definition "keel-$APP" --force-new-deployment >/dev/null; fi
                   mark live
+              finally:
+                - |
+                  [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ] || [ -z "$DEPLOY_ID" ] || aws dynamodb update-item --table-name "$TABLE" --key "{\"PK\":{\"S\":\"APP#$APP\"},\"SK\":{\"S\":\"DEPLOY#$DEPLOY_ID\"}}" --update-expression "SET #s = :s, updatedAt = :t" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values "{\":s\":{\"S\":\"failed\"},\":t\":{\"S\":\"$(date -u +%FT%TZ)\"}}" || true
 
   HookRole:
     Type: AWS::IAM::Role
