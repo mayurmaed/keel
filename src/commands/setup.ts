@@ -50,20 +50,22 @@ export async function setupCommand(
         })) as "port" | "domain"));
 
   let baseDomain = opts.domain;
+  let hostedZoneId: string | undefined;
   if (ingress === "domain") {
     baseDomain = baseDomain ?? (opts.yes ? undefined : await input({ message: "Base domain (e.g. apps.example.com)" }));
     if (!baseDomain) throw new Error("domain mode needs --domain <base domain>");
     const zones = await clients.route53.send(
       new ListHostedZonesByNameCommand({ DNSName: baseDomain }),
     );
-    const match = (zones.HostedZones ?? []).some(
+    const zone = (zones.HostedZones ?? []).find(
       (z) => z.Name === `${baseDomain}.` || z.Name === baseDomain,
     );
-    if (!match) {
+    if (!zone) {
       throw new Error(
         `no Route53 hosted zone found for ${baseDomain} — create one and delegate the domain's nameservers to it, then re-run`,
       );
     }
+    hostedZoneId = zone.Id?.replace(/^\/hostedzone\//, "");
   }
 
   const vpcs = await clients.ec2.send(new DescribeVpcsCommand({ Filters: [{ Name: "is-default", Values: ["true"] }] }));
@@ -89,6 +91,7 @@ export async function setupCommand(
       ingress,
       ...(opts.profile ? { profile: opts.profile } : {}),
       ...(baseDomain ? { baseDomain } : {}),
+      ...(hostedZoneId ? { hostedZoneId } : {}),
       githubTokenStored: Boolean(opts.githubToken),
       controlPlane: {
         stackName: STACK,

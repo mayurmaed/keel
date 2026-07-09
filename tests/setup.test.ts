@@ -123,6 +123,7 @@ describe("setupCommand", () => {
     const cfg = JSON.parse(readFileSync(configPath, "utf8"));
     expect(cfg.ingress).toBe("domain");
     expect(cfg.baseDomain).toBe("example.com");
+    expect(cfg.hostedZoneId).toBe("Z1");
   });
 
   it("fails domain mode when no hosted zone exists", async () => {
