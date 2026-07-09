@@ -145,22 +145,25 @@ export async function logsAws(
   const { clients, sleep } = awsDeps(io);
   let start = Date.now() - 3600_000; // last hour on first call
   const printBatch = async (): Promise<void> => {
+    const from = start;            // fixed for this whole pagination pass
+    let hi = start;                // high-water mark
     let nextToken: string | undefined;
     do {
       const res = await clients.logs.send(
         new FilterLogEventsCommand({
           logGroupName: "/keel/apps",
           logStreamNamePrefix: cfg.name,
-          startTime: start,
+          startTime: from,
           nextToken,
         }),
       );
       for (const e of res.events ?? []) {
         console.log(`${new Date(e.timestamp ?? 0).toISOString()}  ${(e.message ?? "").trimEnd()}`);
-        if (e.timestamp && e.timestamp >= start) start = e.timestamp + 1;
+        if (e.timestamp && e.timestamp + 1 > hi) hi = e.timestamp + 1;
       }
       nextToken = res.nextToken;
     } while (nextToken);
+    start = hi;                    // advance only after the full pass
   };
   await printBatch();
   while (opts.follow) {
