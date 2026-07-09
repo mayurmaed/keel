@@ -1,4 +1,5 @@
 import { StartBuildCommand } from "@aws-sdk/client-codebuild";
+import { FilterLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
 import type { AppConfig } from "../config.js";
 import { makeClients, type AwsClients } from "../aws/clients.js";
 import { readGlobalConfig, type GlobalConfig } from "../aws/globalconfig.js";
@@ -134,4 +135,36 @@ export async function envAws(
     for (const k of pairs) await unsetEnvVar(reg, cfg.name, k);
   }
   console.log("saved to SSM — takes effect on the next deploy");
+}
+
+export async function logsAws(
+  cfg: AppConfig,
+  io: AwsIo = {},
+  opts: { follow?: boolean } = {},
+): Promise<void> {
+  const { clients, sleep } = awsDeps(io);
+  let start = Date.now() - 3600_000; // last hour on first call
+  const printBatch = async (): Promise<void> => {
+    let nextToken: string | undefined;
+    do {
+      const res = await clients.logs.send(
+        new FilterLogEventsCommand({
+          logGroupName: "/keel/apps",
+          logStreamNamePrefix: cfg.name,
+          startTime: start,
+          nextToken,
+        }),
+      );
+      for (const e of res.events ?? []) {
+        console.log(`${new Date(e.timestamp ?? 0).toISOString()}  ${(e.message ?? "").trimEnd()}`);
+        if (e.timestamp && e.timestamp >= start) start = e.timestamp + 1;
+      }
+      nextToken = res.nextToken;
+    } while (nextToken);
+  };
+  await printBatch();
+  while (opts.follow) {
+    await sleep(3000);
+    await printBatch();
+  }
 }

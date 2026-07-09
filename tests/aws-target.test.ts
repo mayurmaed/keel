@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deployAws, registerAwsApp } from "../src/targets/aws";
+import { deployAws, registerAwsApp, logsAws } from "../src/targets/aws";
 import type { AppConfig } from "../src/config";
 
 const cfg: AppConfig = {
@@ -46,9 +46,10 @@ function fakeIo(deployStatuses: string[]) {
         : { Url: "http://alb.example:8001" };
       return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: Object.entries(outputs).map(([k, v]) => ({ OutputKey: k, OutputValue: v })) }] };
     }
+    if (cmd === "FilterLogEventsCommand") return { events: [{ timestamp: 1720000000000, message: "listening on 3000\n" }] };
     return {};
   };
-  const clients = { ddb: { send }, ssm: { send }, codebuild: { send }, cfn: { send } } as any;
+  const clients = { ddb: { send }, ssm: { send }, codebuild: { send }, cfn: { send }, logs: { send } } as any;
   return { calls, io: { gcfg, clients, sleep: async () => {} } };
 }
 
@@ -123,5 +124,37 @@ describe("registerAwsApp", () => {
     }
     const put = puts.find((i) => i.Item.SK === "META")!;
     expect(put.Item.albPort).toBe(8004);
+  });
+});
+
+describe("logsAws", () => {
+  it("prints cloudwatch events", async () => {
+    const { io } = fakeIo([]);
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...a: unknown[]) => { logs.push(a.join(" ")); };
+    try {
+      await logsAws(cfg, io, {});
+    } finally {
+      console.log = orig;
+    }
+    const text = logs.join("\n");
+    expect(text).toContain("listening on 3000");
+    expect(text).toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("targets /keel/apps filtered by app name", async () => {
+    const { calls, io } = fakeIo([]);
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      await logsAws(cfg, io, {});
+    } finally {
+      console.log = orig;
+    }
+    const filterCmd = calls.find((c) => c.cmd === "FilterLogEventsCommand");
+    expect(filterCmd).toBeDefined();
+    expect(filterCmd!.input.logGroupName).toBe("/keel/apps");
+    expect(filterCmd!.input.logStreamNamePrefix).toBe("web");
   });
 });

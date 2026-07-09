@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { loadAppConfig } from "./config.js";
 import { deployLocal, listLocal, logsLocal, destroyLocal } from "./targets/local.js";
-import { registerAwsApp, deployAws, statusAws, envAws } from "./targets/aws.js";
+import { registerAwsApp, deployAws, statusAws, envAws, logsAws } from "./targets/aws.js";
 import { newCommand } from "./commands/new.js";
 import { envCommand } from "./commands/env.js";
 import { setupCommand } from "./commands/setup.js";
@@ -56,9 +56,12 @@ export function buildProgram(): Command {
     .command("logs")
     .description("show app logs")
     .option("-f, --follow", "stream logs")
-    .action((opts) => {
+    .action(async (opts) => {
       const cfg = loadAppConfig(process.cwd());
-      localOnly(cfg.target);
+      if (cfg.target === "aws") {
+        await logsAws(cfg, {}, { follow: Boolean(opts.follow) });
+        return;
+      }
       logsLocal(cfg.name, Boolean(opts.follow));
     });
 
