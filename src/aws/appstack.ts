@@ -26,6 +26,7 @@ export async function ensureAppStack(
     ContainerPort: String(app.port),
     HealthPath: app.healthPath,
     AlbPort: String(albPort),
+    // albPort must start at 8001 - ListenerRule Priority (albPort-8000) must be >= 1.
     Priority: String(albPort - 8000),
     BaseDomain: gcfg.baseDomain ?? "",
     HttpsListenerArn: ingress.httpsListenerArn ?? "",

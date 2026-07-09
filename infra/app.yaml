@@ -91,8 +91,34 @@ Resources:
       TTL: "300"
       ResourceRecords: [!Ref AlbDns]
 
-  Service:
+  # Service is split per-mode so CFN's DependsOn forces the listener/rule to
+  # exist (and be associated with the target group) before ECS tries to
+  # register tasks against it - a single unconditional Service resource can
+  # race ahead of PortListener/DomainRule and fail with "target group does
+  # not have an associated load balancer".
+  ServicePort:
     Type: AWS::ECS::Service
+    Condition: IsPort
+    DependsOn: PortListener
+    Properties:
+      Cluster: !Ref Cluster
+      TaskDefinition: !Sub "keel-${AppName}"
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref Subnets
+          SecurityGroups: [!Ref TaskSgId]
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerName: app
+          ContainerPort: !Ref ContainerPort
+
+  ServiceDomain:
+    Type: AWS::ECS::Service
+    Condition: IsDomain
+    DependsOn: DomainRule
     Properties:
       Cluster: !Ref Cluster
       TaskDefinition: !Sub "keel-${AppName}"
