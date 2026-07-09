@@ -2,8 +2,10 @@ import { StartBuildCommand } from "@aws-sdk/client-codebuild";
 import type { AppConfig } from "../config.js";
 import { makeClients, type AwsClients } from "../aws/clients.js";
 import { readGlobalConfig, type GlobalConfig } from "../aws/globalconfig.js";
+import { ensureIngress } from "../aws/ingress.js";
+import { ensureAppStack } from "../aws/appstack.js";
 import {
-  ensureWebhookSecret, getApp, getDeploy, listDeploys, listEnvVars, newDeployId,
+  ensureWebhookSecret, getApp, getDeploy, listApps, listDeploys, listEnvVars, newDeployId,
   putApp, putDeploy, setEnvVar, unsetEnvVar, type RegistryDeps,
 } from "../aws/registry.js";
 
@@ -27,10 +29,14 @@ export function awsDeps(io: AwsIo = {}) {
 export async function registerAwsApp(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
   const { reg, cp } = awsDeps(io);
   if (!cfg.repo) throw new Error("aws apps need a github repo — set `repo` in keel.json");
+  // albPort is also the ListenerRule priority (albPort-8000) in domain mode, so it must start >= 8001.
+  const apps = await listApps(reg);
+  const used = apps.map((a) => a.albPort).filter((p): p is number => typeof p === "number");
+  const albPort = used.length ? Math.max(...used) + 1 : 8001;
   await putApp(reg, {
     name: cfg.name, repo: cfg.repo, branch: cfg.branch, port: cfg.port,
     ...(cfg.dir ? { dir: cfg.dir } : {}), cpu: 256, memory: 512,
-    healthPath: cfg.healthPath, createdAt: new Date().toISOString(),
+    healthPath: cfg.healthPath, createdAt: new Date().toISOString(), albPort,
   });
   const secret = await ensureWebhookSecret(reg, cfg.name);
   const hookUrl = `${cp.webhookBase}/${cfg.name}`;
@@ -61,6 +67,7 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
     await registerAwsApp(cfg, io);
     app = (await getApp(reg, cfg.name))!;
   }
+  const ingress = await ensureIngress(clients, gcfg);
   const id = newDeployId();
   await putDeploy(reg, { app: app.name, id, status: "queued", updatedAt: new Date().toISOString() });
   const started = await clients.codebuild.send(new StartBuildCommand({
@@ -81,7 +88,8 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
       last = status;
     }
     if (status === "live") {
-      console.log("image pushed and task definition registered — public URL lands in Plan B2");
+      const url = await ensureAppStack(clients, gcfg, app, ingress, app.albPort ?? 8001);
+      console.log(`live: ${url}`);
       return;
     }
     if (status === "failed") {

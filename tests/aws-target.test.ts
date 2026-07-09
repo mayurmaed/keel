@@ -19,27 +19,50 @@ const gcfg = {
 
 function fakeIo(deployStatuses: string[]) {
   const calls: Array<{ cmd: string; input: any }> = [];
+  const createdStacks = new Set<string>();
   let statusIdx = 0;
   const send = async (c: any) => {
     const cmd = c.constructor.name;
     calls.push({ cmd, input: c.input });
     if (cmd === "GetParameterCommand") return { Parameter: { Value: "secret" } };
+    if (cmd === "ScanCommand") return { Items: [] };
     if (cmd === "GetCommand") {
-      if (String(c.input.Key.SK) === "META") return { Item: { PK: "APP#web", SK: "META", name: "web", repo: cfg.repo, branch: "main", port: 3000, cpu: 256, memory: 512, healthPath: "/", createdAt: "t" } };
+      if (String(c.input.Key.SK) === "META") {
+        return { Item: { PK: "APP#web", SK: "META", name: "web", repo: cfg.repo, branch: "main", port: 3000, cpu: 256, memory: 512, healthPath: "/", createdAt: "t" } };
+      }
       const status = deployStatuses[Math.min(statusIdx++, deployStatuses.length - 1)];
       return { Item: { PK: "APP#web", SK: c.input.Key.SK, status, updatedAt: "t" } };
     }
     if (cmd === "StartBuildCommand") return { build: { id: "keel-build:abc123" } };
+    if (cmd === "CreateStackCommand") {
+      createdStacks.add(c.input.StackName);
+      return {};
+    }
+    if (cmd === "DescribeStacksCommand") {
+      const name = c.input.StackName as string;
+      if (!createdStacks.has(name)) throw Object.assign(new Error("does not exist"), { name: "ValidationError" });
+      const outputs = name === "keel-ingress"
+        ? { AlbDns: "alb.example", AlbArn: "arn:alb", AlbSgId: "sg-alb", TaskSgId: "sg-task" }
+        : { Url: "http://alb.example:8001" };
+      return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: Object.entries(outputs).map(([k, v]) => ({ OutputKey: k, OutputValue: v })) }] };
+    }
     return {};
   };
-  const clients = { ddb: { send }, ssm: { send }, codebuild: { send } } as any;
+  const clients = { ddb: { send }, ssm: { send }, codebuild: { send }, cfn: { send } } as any;
   return { calls, io: { gcfg, clients, sleep: async () => {} } };
 }
 
 describe("deployAws", () => {
   it("queues a deploy, starts the build with env overrides, and resolves on live", async () => {
     const { calls, io } = fakeIo(["queued", "building", "live"]);
-    await deployAws(cfg, io);
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...a: unknown[]) => { logs.push(a.join(" ")); };
+    try {
+      await deployAws(cfg, io);
+    } finally {
+      console.log = orig;
+    }
     const start = calls.find((c) => c.cmd === "StartBuildCommand")!;
     const envs = Object.fromEntries(start.input.environmentVariablesOverride.map((e: any) => [e.name, e.value]));
     expect(start.input.projectName).toBe("keel-build");
@@ -48,6 +71,13 @@ describe("deployAws", () => {
     expect(envs.DEPLOY_ID).toMatch(/^\d{8}T\d{6}Z$/);
     const queued = calls.find((c) => c.cmd === "PutCommand" && String(c.input.Item.SK).startsWith("DEPLOY#"))!;
     expect(queued.input.Item.status).toBe("queued");
+
+    const ingressCreateIdx = calls.findIndex((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-ingress");
+    const startBuildIdx = calls.findIndex((c) => c.cmd === "StartBuildCommand");
+    expect(ingressCreateIdx).toBeGreaterThanOrEqual(0);
+    expect(ingressCreateIdx).toBeLessThan(startBuildIdx);
+    expect(calls.some((c) => c.cmd === "CreateStackCommand" && String(c.input.StackName).startsWith("keel-app-"))).toBe(true);
+    expect(logs.some((l) => l.includes("http://alb.example:8001"))).toBe(true);
   });
 
   it("throws with the codebuild console hint when the build fails", async () => {
@@ -67,9 +97,31 @@ describe("registerAwsApp", () => {
     } finally {
       console.log = orig;
     }
-    expect(calls.some((c) => c.cmd === "PutCommand" && c.input.Item.SK === "META")).toBe(true);
+    const put = calls.find((c) => c.cmd === "PutCommand" && c.input.Item.SK === "META")!;
+    expect(put.input.Item.albPort).toBe(8001);
     const text = logs.join("\n");
     expect(text).toContain("https://api.example.com/hook/web");
     expect(text).toContain("gh api repos/me/web/hooks");
+  });
+
+  it("allocates the next albPort above the highest already in use", async () => {
+    const puts: any[] = [];
+    const send = async (c: any) => {
+      const cmd = c.constructor.name;
+      if (cmd === "ScanCommand") return { Items: [{ albPort: 8001 }, { albPort: 8003 }] };
+      if (cmd === "PutCommand") { puts.push(c.input); return {}; }
+      if (cmd === "GetParameterCommand") return { Parameter: { Value: "secret" } };
+      return {};
+    };
+    const io = { gcfg, clients: { ddb: { send }, ssm: { send }, codebuild: { send }, cfn: { send } } as any, sleep: async () => {} };
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      await registerAwsApp(cfg, io);
+    } finally {
+      console.log = orig;
+    }
+    const put = puts.find((i) => i.Item.SK === "META")!;
+    expect(put.Item.albPort).toBe(8004);
   });
 });
