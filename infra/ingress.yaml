@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: keel shared ingress - ALB + security groups (port or domain mode)
+
+Parameters:
+  Mode:
+    Type: String
+    AllowedValues: [port, domain]
+    Description: port = raw ALB ports 8001-8999, domain = HTTPS with ACM cert on BaseDomain
+  VpcId:
+    Type: String
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  BaseDomain:
+    Type: String
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Default: ""
+
+Conditions:
+  IsDomain: !Equals [!Ref Mode, domain]
+  IsPort: !Equals [!Ref Mode, port]
+
+Resources:
+  AlbSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: keel-alb ingress
+      VpcId: !Ref VpcId
+
+  AlbSgIngressPortRange:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: IsPort
+    Properties:
+      GroupId: !Ref AlbSg
+      IpProtocol: tcp
+      FromPort: 8001
+      ToPort: 8999
+      CidrIp: 0.0.0.0/0
+
+  AlbSgIngressHttp:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: IsDomain
+    Properties:
+      GroupId: !Ref AlbSg
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+
+  AlbSgIngressHttps:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: IsDomain
+    Properties:
+      GroupId: !Ref AlbSg
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+
+  TaskSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: keel task ingress - from ALB only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          SourceSecurityGroupId: !Ref AlbSg
+
+  Alb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: keel-alb
+      Type: application
+      Scheme: internet-facing
+      Subnets: !Ref Subnets
+      SecurityGroups: [!Ref AlbSg]
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: IsDomain
+    Properties:
+      DomainName: !Sub "*.${BaseDomain}"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub "*.${BaseDomain}"
+          HostedZoneId: !Ref HostedZoneId
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: IsDomain
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref Certificate
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: "404"
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: IsDomain
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_301
+
+Outputs:
+  AlbDns: { Value: !GetAtt Alb.DNSName }
+  AlbArn: { Value: !Ref Alb }
+  AlbSgId: { Value: !Ref AlbSg }
+  TaskSgId: { Value: !Ref TaskSg }
+  HttpsListenerArn:
+    Condition: IsDomain
+    Value: !Ref HttpsListener
