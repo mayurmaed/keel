@@ -1,5 +1,8 @@
 import { StartBuildCommand } from "@aws-sdk/client-codebuild";
 import { FilterLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
+import { DeleteStackCommand, waitUntilStackDeleteComplete } from "@aws-sdk/client-cloudformation";
+import { DeleteParameterCommand, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
+import { DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { AppConfig } from "../config.js";
 import { makeClients, type AwsClients } from "../aws/clients.js";
 import { readGlobalConfig, type GlobalConfig } from "../aws/globalconfig.js";
@@ -170,4 +173,34 @@ export async function logsAws(
     await sleep(3000);
     await printBatch();
   }
+}
+
+export async function destroyAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
+  const { reg, clients, cp } = awsDeps(io);
+  const app = await getApp(reg, cfg.name);
+  if (!app) throw new Error(`app "${cfg.name}" is not registered — nothing to destroy`);
+
+  // 1. Delete the per-app CloudFormation stack (service, target group, routing).
+  const stackName = `keel-app-${cfg.name}`;
+  await clients.cfn.send(new DeleteStackCommand({ StackName: stackName }));
+  await waitUntilStackDeleteComplete({ client: clients.cfn as any, maxWaitTime: 900 }, { StackName: stackName });
+
+  // 2. Delete all DynamoDB records for the app (META + every DEPLOY#...).
+  const items = await clients.ddb.send(new QueryCommand({
+    TableName: cp.tableName,
+    KeyConditionExpression: "PK = :pk",
+    ExpressionAttributeValues: { ":pk": `APP#${cfg.name}` },
+  }));
+  for (const it of items.Items ?? []) {
+    await clients.ddb.send(new DeleteCommand({ TableName: cp.tableName, Key: { PK: it.PK, SK: it.SK } }));
+  }
+
+  // 3. Delete the app's SSM params (webhook secret + env vars).
+  const params = await clients.ssm.send(new GetParametersByPathCommand({ Path: `/keel/${cfg.name}`, Recursive: true }));
+  for (const p of params.Parameters ?? []) {
+    if (p.Name) await clients.ssm.send(new DeleteParameterCommand({ Name: p.Name }));
+  }
+
+  console.log(`destroyed ${cfg.name}: deleted stack ${stackName}, ${(items.Items ?? []).length} records, ${(params.Parameters ?? []).length} secrets`);
+  console.log(`(shared ingress stack and ECR images left intact)`);
 }

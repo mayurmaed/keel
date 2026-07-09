@@ -1,16 +1,11 @@
 import { Command } from "commander";
+import { confirm } from "@inquirer/prompts";
 import { loadAppConfig } from "./config.js";
 import { deployLocal, listLocal, logsLocal, destroyLocal } from "./targets/local.js";
-import { registerAwsApp, deployAws, statusAws, envAws, logsAws } from "./targets/aws.js";
+import { registerAwsApp, deployAws, statusAws, envAws, logsAws, destroyAws } from "./targets/aws.js";
 import { newCommand } from "./commands/new.js";
 import { envCommand } from "./commands/env.js";
 import { setupCommand } from "./commands/setup.js";
-
-function localOnly(target: string): void {
-  if (target !== "local") {
-    throw new Error('this command reaches AWS in Plan B2 — use target "local" for now');
-  }
-}
 
 export function buildProgram(): Command {
   const program = new Command("keel")
@@ -67,10 +62,24 @@ export function buildProgram(): Command {
 
   program
     .command("destroy")
-    .description("stop and remove the app's container")
-    .action(async () => {
+    .description("stop and remove the app's container (or the AWS app + its records)")
+    .option("--yes", "skip confirmation")
+    .action(async (opts) => {
       const cfg = loadAppConfig(process.cwd());
-      localOnly(cfg.target);
+      if (cfg.target === "aws") {
+        if (!opts.yes) {
+          const ok = await confirm({
+            message: `Destroy AWS app "${cfg.name}" (service, routing, records, secrets)? This cannot be undone.`,
+            default: false,
+          });
+          if (!ok) {
+            console.log("aborted");
+            return;
+          }
+        }
+        await destroyAws(cfg);
+        return;
+      }
       await destroyLocal(cfg.name);
       console.log(`destroyed ${cfg.name}`);
     });

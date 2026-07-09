@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deployAws, registerAwsApp, logsAws } from "../src/targets/aws";
+import { deployAws, registerAwsApp, logsAws, destroyAws } from "../src/targets/aws";
 import type { AppConfig } from "../src/config";
 
 const cfg: AppConfig = {
@@ -156,5 +156,60 @@ describe("logsAws", () => {
     expect(filterCmd).toBeDefined();
     expect(filterCmd!.input.logGroupName).toBe("/keel/apps");
     expect(filterCmd!.input.logStreamNamePrefix).toBe("web");
+  });
+});
+
+function fakeDestroyIo(opts: { registered?: boolean } = {}) {
+  const registered = opts.registered ?? true;
+  const calls: Array<{ cmd: string; input: any }> = [];
+  const send = async (c: any) => {
+    const cmd = c.constructor.name;
+    calls.push({ cmd, input: c.input });
+    if (cmd === "GetCommand") {
+      if (!registered) return {};
+      return { Item: { PK: "APP#web", SK: "META", name: "web", repo: cfg.repo, branch: "main", port: 3000, cpu: 256, memory: 512, healthPath: "/", createdAt: "t" } };
+    }
+    if (cmd === "DescribeStacksCommand") return { Stacks: [{ StackStatus: "DELETE_COMPLETE" }] };
+    if (cmd === "QueryCommand") return { Items: [{ PK: "APP#web", SK: "META" }, { PK: "APP#web", SK: "DEPLOY#x" }] };
+    if (cmd === "GetParametersByPathCommand") {
+      return { Parameters: [{ Name: "/keel/web/webhook-secret" }, { Name: "/keel/web/env/API_KEY" }] };
+    }
+    return {};
+  };
+  const clients = { ddb: { send }, ssm: { send }, cfn: { send } } as any;
+  return { calls, io: { gcfg, clients, sleep: async () => {} } };
+}
+
+describe("destroyAws", () => {
+  it("deletes the app stack", async () => {
+    const { calls, io } = fakeDestroyIo();
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      await destroyAws(cfg, io);
+    } finally {
+      console.log = orig;
+    }
+    const del = calls.find((c) => c.cmd === "DeleteStackCommand");
+    expect(del).toBeDefined();
+    expect(del!.input.StackName).toBe("keel-app-web");
+  });
+
+  it("deletes ddb records and ssm params", async () => {
+    const { calls, io } = fakeDestroyIo();
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      await destroyAws(cfg, io);
+    } finally {
+      console.log = orig;
+    }
+    expect(calls.filter((c) => c.cmd === "DeleteCommand")).toHaveLength(2);
+    expect(calls.filter((c) => c.cmd === "DeleteParameterCommand")).toHaveLength(2);
+  });
+
+  it("throws when app not registered", async () => {
+    const { io } = fakeDestroyIo({ registered: false });
+    await expect(destroyAws(cfg, io)).rejects.toThrow(/not registered/);
   });
 });
