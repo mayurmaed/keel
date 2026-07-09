@@ -186,6 +186,7 @@ export async function destroyAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> 
   await waitUntilStackDeleteComplete({ client: clients.cfn as any, maxWaitTime: 900 }, { StackName: stackName });
 
   // 2. Delete all DynamoDB records for the app (META + every DEPLOY#...).
+  // ponytail: single Query page (up to 1MB) — fine for an app's deploy history, paginate if that ever fills up.
   const items = await clients.ddb.send(new QueryCommand({
     TableName: cp.tableName,
     KeyConditionExpression: "PK = :pk",
@@ -195,12 +196,23 @@ export async function destroyAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> 
     await clients.ddb.send(new DeleteCommand({ TableName: cp.tableName, Key: { PK: it.PK, SK: it.SK } }));
   }
 
-  // 3. Delete the app's SSM params (webhook secret + env vars).
-  const params = await clients.ssm.send(new GetParametersByPathCommand({ Path: `/keel/${cfg.name}`, Recursive: true }));
-  for (const p of params.Parameters ?? []) {
-    if (p.Name) await clients.ssm.send(new DeleteParameterCommand({ Name: p.Name }));
-  }
+  // 3. Delete the app's SSM params (webhook secret + env vars). Paginate — GetParametersByPath
+  // pages at 10 by default, and apps commonly have more than 10 params (see commit 73703d1).
+  let recordCount = 0;
+  let nextToken: string | undefined;
+  do {
+    const params = await clients.ssm.send(
+      new GetParametersByPathCommand({ Path: `/keel/${cfg.name}`, Recursive: true, NextToken: nextToken }),
+    );
+    for (const p of params.Parameters ?? []) {
+      if (p.Name) {
+        await clients.ssm.send(new DeleteParameterCommand({ Name: p.Name }));
+        recordCount++;
+      }
+    }
+    nextToken = params.NextToken;
+  } while (nextToken);
 
-  console.log(`destroyed ${cfg.name}: deleted stack ${stackName}, ${(items.Items ?? []).length} records, ${(params.Parameters ?? []).length} secrets`);
+  console.log(`destroyed ${cfg.name}: deleted stack ${stackName}, ${(items.Items ?? []).length} records, ${recordCount} secrets`);
   console.log(`(shared ingress stack and ECR images left intact)`);
 }

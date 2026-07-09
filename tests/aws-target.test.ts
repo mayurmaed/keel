@@ -212,4 +212,32 @@ describe("destroyAws", () => {
     const { io } = fakeDestroyIo({ registered: false });
     await expect(destroyAws(cfg, io)).rejects.toThrow(/not registered/);
   });
+
+  it("paginates through SSM params past the first page", async () => {
+    const calls: Array<{ cmd: string; input: any }> = [];
+    const send = async (c: any) => {
+      const cmd = c.constructor.name;
+      calls.push({ cmd, input: c.input });
+      if (cmd === "GetCommand") {
+        return { Item: { PK: "APP#web", SK: "META", name: "web", repo: cfg.repo, branch: "main", port: 3000, cpu: 256, memory: 512, healthPath: "/", createdAt: "t" } };
+      }
+      if (cmd === "DescribeStacksCommand") return { Stacks: [{ StackStatus: "DELETE_COMPLETE" }] };
+      if (cmd === "QueryCommand") return { Items: [] };
+      if (cmd === "GetParametersByPathCommand") {
+        if (!c.input.NextToken) return { Parameters: [{ Name: "/keel/web/webhook-secret" }], NextToken: "page2" };
+        return { Parameters: [{ Name: "/keel/web/env/API_KEY" }] };
+      }
+      return {};
+    };
+    const clients = { ddb: { send }, ssm: { send }, cfn: { send } } as any;
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      await destroyAws(cfg, { gcfg, clients, sleep: async () => {} });
+    } finally {
+      console.log = orig;
+    }
+    expect(calls.filter((c) => c.cmd === "GetParametersByPathCommand")).toHaveLength(2);
+    expect(calls.filter((c) => c.cmd === "DeleteParameterCommand")).toHaveLength(2);
+  });
 });
