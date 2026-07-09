@@ -107,7 +107,9 @@ Resources:
                 Resource: !GetAtt Table.Arn
               - Effect: Allow
                 Action: [ssm:GetParameter, ssm:GetParametersByPath]
-                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/github-token
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*/env/*
 
   Build:
     Type: AWS::CodeBuild::Project

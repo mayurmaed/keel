@@ -77,6 +77,15 @@ describe("webhook handler", () => {
     expect((await makeHandler(deps)(event(push))).statusCode).toBe(204);
   });
 
+  it("ignores a malformed app record missing branch (204) and starts no build", async () => {
+    const { calls, deps } = fakeDeps({
+      app: { Item: { PK: { S: "APP#web" }, SK: { S: "META" } } },
+    });
+    const res = await makeHandler(deps)(event(push));
+    expect(res.statusCode).toBe(204);
+    expect(calls.some((c) => c.cmd === "StartBuildCommand")).toBe(false);
+  });
+
   it("ignores pushes to other branches (204)", async () => {
     const { deps } = fakeDeps();
     const other = JSON.stringify({ ref: "refs/heads/feature", after: "x" });

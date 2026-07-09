@@ -31,6 +31,22 @@ function fakeCfn(opts: { exists: boolean; noUpdates?: boolean }) {
 }
 
 describe("deployStack", () => {
+  it("rejects instead of swallowing a transient DescribeStacks error into a create attempt", async () => {
+    const calls: string[] = [];
+    const cfn = {
+      send: async (c: any) => {
+        const cmd = c.constructor.name;
+        calls.push(cmd);
+        if (cmd === "DescribeStacksCommand") {
+          throw Object.assign(new Error("Rate exceeded"), { name: "ThrottlingException" });
+        }
+        return {};
+      },
+    } as any;
+    await expect(deployStack(cfn, "keel-control-plane", "tpl", {})).rejects.toThrow(/Rate exceeded/);
+    expect(calls).not.toContain("CreateStackCommand");
+  });
+
   it("creates when the stack does not exist and returns outputs", async () => {
     const { calls, cfn } = fakeCfn({ exists: false });
     const out = await deployStack(cfn, "keel-control-plane", "tpl", { WebhookCode: "x" });

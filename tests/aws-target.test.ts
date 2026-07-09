@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deployAws, registerAwsApp, logsAws, destroyAws } from "../src/targets/aws";
+import { deployAws, registerAwsApp, statusAws, envAws, logsAws, destroyAws } from "../src/targets/aws";
 import type { AppConfig } from "../src/config";
 
 const cfg: AppConfig = {
@@ -85,6 +85,11 @@ describe("deployAws", () => {
     const { io } = fakeIo(["building", "failed"]);
     await expect(deployAws(cfg, io)).rejects.toThrow(/codebuild/i);
   });
+
+  it("times out after a bounded number of polls instead of hanging on a status that never resolves", async () => {
+    const { io } = fakeIo(["building"]); // never reaches live or failed
+    await expect(deployAws(cfg, io)).rejects.toThrow(/timed out/i);
+  });
 });
 
 describe("registerAwsApp", () => {
@@ -124,6 +129,121 @@ describe("registerAwsApp", () => {
     }
     const put = puts.find((i) => i.Item.SK === "META")!;
     expect(put.Item.albPort).toBe(8004);
+  });
+});
+
+describe("statusAws", () => {
+  it("prints ids and statuses for recent deploys", async () => {
+    const send = async (c: any) => {
+      if (c.constructor.name === "QueryCommand") {
+        return {
+          Items: [
+            { SK: "DEPLOY#20260101T000000Z", status: "live", updatedAt: "t1" },
+            { SK: "DEPLOY#20260102T000000Z", status: "building", updatedAt: "t2" },
+          ],
+        };
+      }
+      return {};
+    };
+    const io = { gcfg, clients: { ddb: { send }, ssm: { send }, codebuild: { send } } as any, sleep: async () => {} };
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...a: unknown[]) => { logs.push(a.join(" ")); };
+    try {
+      await statusAws(cfg, io);
+    } finally {
+      console.log = orig;
+    }
+    const text = logs.join("\n");
+    expect(text).toContain("20260101T000000Z");
+    expect(text).toContain("live");
+    expect(text).toContain("20260102T000000Z");
+    expect(text).toContain("building");
+  });
+});
+
+describe("envAws", () => {
+  it("set writes a PutParameterCommand under /keel/<app>/env/<KEY>", async () => {
+    const calls: Array<{ cmd: string; input: any }> = [];
+    const send = async (c: any) => { calls.push({ cmd: c.constructor.name, input: c.input }); return {}; };
+    const io = { gcfg, clients: { ddb: { send }, ssm: { send }, codebuild: { send } } as any, sleep: async () => {} };
+    await envAws("set", ["A=1"], cfg, io);
+    const put = calls.find((c) => c.cmd === "PutParameterCommand")!;
+    expect(put.input.Name).toBe("/keel/web/env/A");
+    expect(put.input.Value).toBe("1");
+  });
+
+  it("list prints KEY=VALUE from GetParametersByPath", async () => {
+    const send = async (c: any) => {
+      if (c.constructor.name === "GetParametersByPathCommand") {
+        return { Parameters: [{ Name: "/keel/web/env/A", Value: "1" }] };
+      }
+      return {};
+    };
+    const io = { gcfg, clients: { ddb: { send }, ssm: { send }, codebuild: { send } } as any, sleep: async () => {} };
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...a: unknown[]) => { logs.push(a.join(" ")); };
+    try {
+      await envAws("list", [], cfg, io);
+    } finally {
+      console.log = orig;
+    }
+    expect(logs.join("\n")).toContain("A=1");
+  });
+
+  it("unset sends a DeleteParameterCommand", async () => {
+    const calls: Array<{ cmd: string; input: any }> = [];
+    const send = async (c: any) => { calls.push({ cmd: c.constructor.name, input: c.input }); return {}; };
+    const io = { gcfg, clients: { ddb: { send }, ssm: { send }, codebuild: { send } } as any, sleep: async () => {} };
+    await envAws("unset", ["A"], cfg, io);
+    expect(calls.some((c) => c.cmd === "DeleteParameterCommand" && c.input.Name === "/keel/web/env/A")).toBe(true);
+  });
+});
+
+describe("deployAws auto-register", () => {
+  it("registers the app automatically when META is missing, then proceeds to StartBuild", async () => {
+    const calls: Array<{ cmd: string; input: any }> = [];
+    const createdStacks = new Set<string>();
+    let metaCalls = 0;
+    let statusIdx = 0;
+    const deployStatuses = ["queued", "live"];
+    const send = async (c: any) => {
+      const cmd = c.constructor.name;
+      calls.push({ cmd, input: c.input });
+      if (cmd === "GetParameterCommand") return { Parameter: { Value: "secret" } };
+      if (cmd === "ScanCommand") return { Items: [] };
+      if (cmd === "GetCommand") {
+        if (String(c.input.Key.SK) === "META") {
+          metaCalls++;
+          if (metaCalls === 1) return {}; // not registered yet — triggers auto-register
+          return { Item: { PK: "APP#web", SK: "META", name: "web", repo: cfg.repo, branch: "main", port: 3000, cpu: 256, memory: 512, healthPath: "/", createdAt: "t", albPort: 8001 } };
+        }
+        const status = deployStatuses[Math.min(statusIdx++, deployStatuses.length - 1)];
+        return { Item: { PK: "APP#web", SK: c.input.Key.SK, status, updatedAt: "t" } };
+      }
+      if (cmd === "StartBuildCommand") return { build: { id: "keel-build:abc123" } };
+      if (cmd === "CreateStackCommand") { createdStacks.add(c.input.StackName); return {}; }
+      if (cmd === "DescribeStacksCommand") {
+        const name = c.input.StackName as string;
+        if (!createdStacks.has(name)) throw Object.assign(new Error("does not exist"), { name: "ValidationError" });
+        const outputs = name === "keel-ingress"
+          ? { AlbDns: "alb.example", AlbArn: "arn:alb", AlbSgId: "sg-alb", TaskSgId: "sg-task" }
+          : { Url: "http://alb.example:8001" };
+        return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: Object.entries(outputs).map(([k, v]) => ({ OutputKey: k, OutputValue: v })) }] };
+      }
+      return {};
+    };
+    const clients = { ddb: { send }, ssm: { send }, codebuild: { send }, cfn: { send }, logs: { send } } as any;
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      await deployAws(cfg, { gcfg, clients, sleep: async () => {} });
+    } finally {
+      console.log = orig;
+    }
+    expect(calls.some((c) => c.cmd === "PutCommand" && c.input.Item.SK === "META")).toBe(true);
+    expect(calls.some((c) => c.cmd === "StartBuildCommand")).toBe(true);
   });
 });
 

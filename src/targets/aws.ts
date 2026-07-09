@@ -1,6 +1,6 @@
 import { StartBuildCommand } from "@aws-sdk/client-codebuild";
 import { FilterLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
-import { DeleteStackCommand, waitUntilStackDeleteComplete } from "@aws-sdk/client-cloudformation";
+import { CloudFormationClient, DeleteStackCommand, waitUntilStackDeleteComplete } from "@aws-sdk/client-cloudformation";
 import { DeleteParameterCommand, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 import { DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { AppConfig } from "../config.js";
@@ -81,9 +81,9 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
   const buildId: string | undefined = started.build?.id;
   console.log(`build started (${buildId ?? "id unknown"}) — waiting…`);
 
-  const deadline = Date.now() + 20 * 60_000;
+  const MAX_POLLS = 240; // 240 * 5s = 20 min
   let last = "queued";
-  while (Date.now() < deadline) {
+  for (let i = 0; i < MAX_POLLS; i++) {
     await sleep(5000);
     const dep = await getDeploy(reg, app.name, id);
     const status = dep?.status ?? "queued";
@@ -183,7 +183,8 @@ export async function destroyAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> 
   // 1. Delete the per-app CloudFormation stack (service, target group, routing).
   const stackName = `keel-app-${cfg.name}`;
   await clients.cfn.send(new DeleteStackCommand({ StackName: stackName }));
-  await waitUntilStackDeleteComplete({ client: clients.cfn as any, maxWaitTime: 900 }, { StackName: stackName });
+  // maxWaitTime: 900 (15m) — delete is faster than create/update, which use 1800 (30m).
+  await waitUntilStackDeleteComplete({ client: clients.cfn as CloudFormationClient, maxWaitTime: 900 }, { StackName: stackName });
 
   // 2. Delete all DynamoDB records for the app (META + every DEPLOY#...).
   // ponytail: single Query page (up to 1MB) — fine for an app's deploy history, paginate if that ever fills up.

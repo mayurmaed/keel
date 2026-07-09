@@ -7,6 +7,11 @@ import { newCommand } from "./commands/new.js";
 import { envCommand } from "./commands/env.js";
 import { setupCommand } from "./commands/setup.js";
 
+async function printLocalApps(): Promise<void> {
+  const lines = await listLocal();
+  console.log(lines.length ? lines.join("\n") : "no keel apps running");
+}
+
 export function buildProgram(): Command {
   const program = new Command("keel")
     .version("0.1.0")
@@ -42,10 +47,7 @@ export function buildProgram(): Command {
   program
     .command("list")
     .description("show running keel apps")
-    .action(async () => {
-      const lines = await listLocal();
-      console.log(lines.length ? lines.join("\n") : "no keel apps running");
-    });
+    .action(printLocalApps);
 
   program
     .command("logs")
@@ -107,8 +109,7 @@ export function buildProgram(): Command {
         await statusAws(cfg);
         return;
       }
-      const lines = await listLocal();
-      console.log(lines.length ? lines.join("\n") : "no keel apps running");
+      await printLocalApps();
     });
 
   program
