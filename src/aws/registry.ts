@@ -20,6 +20,7 @@ export interface AppRecord {
   memory: number;
   healthPath: string;
   createdAt: string;
+  albPort?: number;
 }
 
 export interface DeployRecord {

@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: keel per-app runtime - target group, fargate service, routing (port or domain mode)
+
+Parameters:
+  AppName:
+    Type: String
+  Cluster:
+    Type: String
+  VpcId:
+    Type: String
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  TaskSgId:
+    Type: String
+  AlbArn:
+    Type: String
+  AlbDns:
+    Type: String
+  Mode:
+    Type: String
+    AllowedValues: [port, domain]
+  ContainerPort:
+    Type: String
+  HealthPath:
+    Type: String
+  AlbPort:
+    Type: String
+    Default: "0"
+  Priority:
+    Type: String
+    Default: "1"
+  BaseDomain:
+    Type: String
+    Default: ""
+  HttpsListenerArn:
+    Type: String
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Default: ""
+
+Conditions:
+  IsDomain: !Equals [!Ref Mode, domain]
+  IsPort: !Equals [!Ref Mode, port]
+
+Resources:
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      Protocol: HTTP
+      Port: !Ref ContainerPort
+      VpcId: !Ref VpcId
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: !Ref HealthPath
+      Matcher:
+        HttpCode: "200-399"
+
+  PortListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: IsPort
+    Properties:
+      LoadBalancerArn: !Ref AlbArn
+      Port: !Ref AlbPort
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  DomainRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: IsDomain
+    Properties:
+      ListenerArn: !Ref HttpsListenerArn
+      Priority: !Ref Priority
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values: [!Sub "${AppName}.${BaseDomain}"]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: IsDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${AppName}.${BaseDomain}"
+      Type: CNAME
+      TTL: "300"
+      ResourceRecords: [!Ref AlbDns]
+
+  # Service is split per-mode so CFN's DependsOn forces the listener/rule to
+  # exist (and be associated with the target group) before ECS tries to
+  # register tasks against it - a single unconditional Service resource can
+  # race ahead of PortListener/DomainRule and fail with "target group does
+  # not have an associated load balancer".
+  ServicePort:
+    Type: AWS::ECS::Service
+    Condition: IsPort
+    DependsOn: PortListener
+    Properties:
+      ServiceName: !Sub "keel-${AppName}"
+      Cluster: !Ref Cluster
+      TaskDefinition: !Sub "keel-${AppName}"
+      DesiredCount: 1
+      LaunchType: FARGATE
+      HealthCheckGracePeriodSeconds: 60
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref Subnets
+          SecurityGroups: [!Ref TaskSgId]
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerName: app
+          ContainerPort: !Ref ContainerPort
+
+  ServiceDomain:
+    Type: AWS::ECS::Service
+    Condition: IsDomain
+    DependsOn: DomainRule
+    Properties:
+      ServiceName: !Sub "keel-${AppName}"
+      Cluster: !Ref Cluster
+      TaskDefinition: !Sub "keel-${AppName}"
+      DesiredCount: 1
+      LaunchType: FARGATE
+      HealthCheckGracePeriodSeconds: 60
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref Subnets
+          SecurityGroups: [!Ref TaskSgId]
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerName: app
+          ContainerPort: !Ref ContainerPort
+
+Outputs:
+  Url:
+    Value: !If [IsPort, !Sub "http://${AlbDns}:${AlbPort}", !Sub "https://${AppName}.${BaseDomain}"]

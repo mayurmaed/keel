@@ -107,7 +107,12 @@ Resources:
                 Resource: !GetAtt Table.Arn
               - Effect: Allow
                 Action: [ssm:GetParameter, ssm:GetParametersByPath]
-                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/github-token
+                  # GetParametersByPath authorizes against the path node itself (/keel/<app>/env),
+                  # not the child params — so both the node and /env/* are required.
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*/env
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*/env/*
 
   Build:
     Type: AWS::CodeBuild::Project
@@ -170,7 +175,8 @@ Resources:
                   if [ "$CODEBUILD_BUILD_SUCCEEDING" != "1" ]; then mark failed; exit 1; fi
                   docker push "$ECR_URI:$APP-$COMMIT"
                   docker push "$ECR_URI:$APP"
-                  SECRETS=$(aws ssm get-parameters-by-path --path "/keel/$APP/env" --query "Parameters[].Name" --output json | jq -c --arg r "$AWS_REGION" --arg a "$ACCOUNT" '[.[] | {name: (split("/")[-1]), valueFrom: ("arn:aws:ssm:" + $r + ":" + $a + ":parameter" + .)}]')
+                  SECRETS=$(aws ssm get-parameters-by-path --path "/keel/$APP/env" --query "Parameters[].Name" --output json 2>/dev/null | jq -c --arg r "$AWS_REGION" --arg a "$ACCOUNT" '[.[] | {name: (split("/")[-1]), valueFrom: ("arn:aws:ssm:" + $r + ":" + $a + ":parameter" + .)}]' 2>/dev/null || echo '[]')
+                  [ -n "$SECRETS" ] || SECRETS='[]'
                   printf '{"family":"keel-%s","networkMode":"awsvpc","requiresCompatibilities":["FARGATE"],"cpu":"%s","memory":"%s","executionRoleArn":"%s","containerDefinitions":[{"name":"app","image":"%s:%s-%s","essential":true,"portMappings":[{"containerPort":%s}],"secrets":%s,"logConfiguration":{"logDriver":"awslogs","options":{"awslogs-group":"%s","awslogs-region":"%s","awslogs-stream-prefix":"%s"}}}]}' "$APP" "$CPU" "$MEMORY" "$EXEC_ROLE" "$ECR_URI" "$APP" "$COMMIT" "$PORT" "$SECRETS" "$LOG_GROUP" "$AWS_REGION" "$APP" > /tmp/taskdef.json
                   aws ecs register-task-definition --cli-input-json file:///tmp/taskdef.json
                   if [ -n "$(aws ecs describe-services --cluster "$CLUSTER" --services "keel-$APP" --query "services[?status=='ACTIVE'].serviceName" --output text)" ]; then aws ecs update-service --cluster "$CLUSTER" --service "keel-$APP" --task-definition "keel-$APP" --force-new-deployment >/dev/null; fi

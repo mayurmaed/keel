@@ -23,8 +23,9 @@ async function stackExists(cfn: Cfn, name: string): Promise<boolean> {
   try {
     await cfn.send(new DescribeStacksCommand({ StackName: name }));
     return true;
-  } catch {
-    return false;
+  } catch (e: any) {
+    if (e?.name === "ValidationError" || /does not exist/i.test(String(e?.message ?? e))) return false;
+    throw e;
   }
 }
 

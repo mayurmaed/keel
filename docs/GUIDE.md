@@ -8,10 +8,11 @@ babysit, no per-seat SaaS bill, just your AWS usage.
 This guide covers the architecture, the deploy flows, and exactly how to use
 and test each piece.
 
-> **Status:** Plan B1 (control plane + build/deploy pipeline) is complete and
-> live-verified. Apps build and register as ECS task definitions. Public URLs
-> via a shared load balancer arrive in Plan B2 — until then, "deployed" means
-> "image in ECR + task definition registered", not yet "reachable at a URL".
+> **Status:** Plan B1 (control plane + build/deploy pipeline) and Plan B2 (AWS
+> runtime) are complete and live-verified end-to-end. `keel deploy` builds an
+> app and serves it at a real URL behind a shared load balancer; `keel logs`,
+> `keel status`, `keel destroy`, env vars, and push-to-redeploy all work against
+> AWS. Ingress mode (port vs. subdomain-HTTPS) is chosen at `keel setup`.
 
 ---
 
@@ -212,8 +213,8 @@ After that, every `git push` to your tracked branch deploys automatically.
 | `keel deploy` | `docker build` + `docker run` | CodeBuild → ECR → task definition |
 | `keel status` | running container | recent deploys from DynamoDB |
 | `keel env set/unset/list` | edits keel.json | SSM SecureStrings (applied next deploy) |
-| `keel logs` | `docker logs` | *(Plan B2)* |
-| `keel destroy` | removes the container | *(Plan B2)* |
+| `keel logs` | `docker logs` | CloudWatch (`--follow` supported) |
+| `keel destroy` | removes the container | deletes the app stack, records, secrets |
 | `keel setup` | — | deploys the control plane |
 
 ---

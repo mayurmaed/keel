@@ -47,7 +47,7 @@ idle. Apps run on Fargate.
 
 - [x] Plan A: CLI + local Docker target
 - [x] Plan B1: AWS control plane — `keel setup`, GitHub webhook auto-deploy, CodeBuild → ECR → ECS task definitions
-- [ ] Plan B2: AWS runtime — shared ALB, live URLs, `keel logs`/`destroy` for AWS, dashboard
+- [x] Plan B2: AWS runtime — shared ALB, live public URLs, `keel logs`/`destroy` for AWS (live-verified end-to-end)
 - [ ] Phase 2: Postgres provisioning
 - [ ] Phase 3: Auth service
 - [ ] Phase 4: Open-source packaging

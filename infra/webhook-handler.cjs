@@ -19,7 +19,8 @@ const makeHandler = (d) => async (evt) => {
     return { statusCode: 401, body: "bad signature" };
   }
   const push = JSON.parse(body.toString());
-  const branch = rec.Item.branch.S;
+  const branch = rec.Item.branch && rec.Item.branch.S;
+  if (!branch) return { statusCode: 204 };
   if (push.ref !== "refs/heads/" + branch) return { statusCode: 204 };
   const id = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
   await d.ddb.send(new PutItemCommand({ TableName: T, Item: {
@@ -28,8 +29,8 @@ const makeHandler = (d) => async (evt) => {
   } }));
   const ev = (n, v) => ({ name: n, value: String(v), type: "PLAINTEXT" });
   await d.cb.send(new StartBuildCommand({ projectName: P, environmentVariablesOverride: [
-    ev("APP", app), ev("REPO_URL", rec.Item.repo.S), ev("BRANCH", branch),
-    ev("PORT", rec.Item.port.N), ev("APP_DIR", (rec.Item.dir && rec.Item.dir.S) || ""),
+    ev("APP", app), ev("REPO_URL", (rec.Item.repo && rec.Item.repo.S) || ""), ev("BRANCH", branch),
+    ev("PORT", (rec.Item.port && rec.Item.port.N) || ""), ev("APP_DIR", (rec.Item.dir && rec.Item.dir.S) || ""),
     ev("CPU", (rec.Item.cpu && rec.Item.cpu.N) || "256"), ev("MEMORY", (rec.Item.memory && rec.Item.memory.N) || "512"),
     ev("DEPLOY_ID", id),
   ] }));
