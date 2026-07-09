@@ -90,4 +90,17 @@ describe("exec implementations", () => {
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("includes captured stderr in the failure error", async () => {
+    const spyOut = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const spyErr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await expect(
+        captureExec("node", ["-e", "process.stderr.write('boom'); process.exit(3)"]),
+      ).rejects.toThrow(/exited 3.*boom/s);
+    } finally {
+      spyOut.mockRestore();
+      spyErr.mockRestore();
+    }
+  });
 });
