@@ -40,8 +40,8 @@ export async function registerAwsApp(cfg: AppConfig, io: AwsIo = {}): Promise<vo
   console.log(`webhook secret: ${secret}`);
   console.log(`add it with:`);
   console.log(
-    `  gh api repos/${ownerRepo}/hooks -f name=web -F active=true -f "events[]=push" ` +
-    `-f config[url]='${hookUrl}' -f config[content_type]=application/json -f config[secret]='${secret}'`,
+    `  gh api repos/${ownerRepo}/hooks -f 'name=web' -F 'active=true' -f 'events[]=push' ` +
+    `-f 'config[url]=${hookUrl}' -f 'config[content_type]=json' -f 'config[secret]=${secret}'`,
   );
 }
 
