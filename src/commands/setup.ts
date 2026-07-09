@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
-import { input } from "@inquirer/prompts";
+import { input, select } from "@inquirer/prompts";
 import { GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { DescribeSubnetsCommand, DescribeVpcsCommand } from "@aws-sdk/client-ec2";
 import { PutParameterCommand } from "@aws-sdk/client-ssm";
+import { ListHostedZonesByNameCommand } from "@aws-sdk/client-route-53";
 import { makeClients, type AwsClients } from "../aws/clients.js";
 import { GLOBAL_CONFIG_PATH, writeGlobalConfig } from "../aws/globalconfig.js";
 import { deployStack } from "../aws/stack.js";
@@ -13,6 +14,7 @@ export interface SetupOpts {
   githubToken?: string;
   profile?: string;
   yes?: boolean;
+  ingress?: "port" | "domain";
 }
 
 const STACK = "keel-control-plane";
@@ -35,6 +37,35 @@ export async function setupCommand(
     );
   }
 
+  const ingress =
+    opts.ingress ??
+    (opts.yes
+      ? "port"
+      : ((await select({
+          message: "How should deployed apps be reachable?",
+          choices: [
+            { name: "port  — http://<alb>:<port>, no domain needed", value: "port" },
+            { name: "domain — https://<app>.<your-domain>, needs a Route53 zone", value: "domain" },
+          ],
+        })) as "port" | "domain"));
+
+  let baseDomain = opts.domain;
+  if (ingress === "domain") {
+    baseDomain = baseDomain ?? (opts.yes ? undefined : await input({ message: "Base domain (e.g. apps.example.com)" }));
+    if (!baseDomain) throw new Error("domain mode needs --domain <base domain>");
+    const zones = await clients.route53.send(
+      new ListHostedZonesByNameCommand({ DNSName: baseDomain }),
+    );
+    const match = (zones.HostedZones ?? []).some(
+      (z) => z.Name === `${baseDomain}.` || z.Name === baseDomain,
+    );
+    if (!match) {
+      throw new Error(
+        `no Route53 hosted zone found for ${baseDomain} — create one and delegate the domain's nameservers to it, then re-run`,
+      );
+    }
+  }
+
   const vpcs = await clients.ec2.send(new DescribeVpcsCommand({ Filters: [{ Name: "is-default", Values: ["true"] }] }));
   const vpcId = vpcs.Vpcs?.[0]?.VpcId;
   if (!vpcId) throw new Error("no default VPC found in this region — create one (VPC console → Create default VPC) and re-run");
@@ -55,8 +86,9 @@ export async function setupCommand(
   writeGlobalConfig(
     {
       region,
+      ingress,
       ...(opts.profile ? { profile: opts.profile } : {}),
-      ...(opts.domain ? { baseDomain: opts.domain } : {}),
+      ...(baseDomain ? { baseDomain } : {}),
       githubTokenStored: Boolean(opts.githubToken),
       controlPlane: {
         stackName: STACK,

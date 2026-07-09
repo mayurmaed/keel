@@ -20,6 +20,8 @@ export interface GlobalConfig {
   profile?: string;
   baseDomain?: string;
   githubTokenStored?: boolean;
+  ingress: "port" | "domain";
+  hostedZoneId?: string;
   controlPlane?: ControlPlane;
 }
 

@@ -45,6 +45,7 @@ function fakeClients() {
       }),
       ssm: mk("ssm", {}),
       cfn: mk("cfn", { Outputs: outputs }),
+      route53: mk("route53", {}),
     } as any,
   };
 }
@@ -97,5 +98,41 @@ describe("setupCommand", () => {
     await expect(
       setupCommand({ region: "ap-south-1", yes: true }, { clients, configPath: "/dev/null" }),
     ).rejects.toThrow(/aws configure/);
+  });
+
+  it("stores ingress=port by default", async () => {
+    const { clients } = fakeClients();
+    const configPath = join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");
+    await setupCommand({ region: "ap-south-1", yes: true }, { clients, configPath });
+    expect(JSON.parse(readFileSync(configPath, "utf8")).ingress).toBe("port");
+  });
+
+  it("stores ingress=domain and baseDomain when a hosted zone exists", async () => {
+    const { clients } = fakeClients();
+    (clients as any).route53 = {
+      send: async (c: any) =>
+        c.constructor.name === "ListHostedZonesByNameCommand"
+          ? { HostedZones: [{ Name: "example.com.", Id: "/hostedzone/Z1" }] }
+          : {},
+    };
+    const configPath = join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");
+    await setupCommand(
+      { region: "ap-south-1", ingress: "domain", domain: "example.com", yes: true },
+      { clients, configPath },
+    );
+    const cfg = JSON.parse(readFileSync(configPath, "utf8"));
+    expect(cfg.ingress).toBe("domain");
+    expect(cfg.baseDomain).toBe("example.com");
+  });
+
+  it("fails domain mode when no hosted zone exists", async () => {
+    const { clients } = fakeClients();
+    (clients as any).route53 = { send: async () => ({ HostedZones: [] }) };
+    await expect(
+      setupCommand(
+        { region: "ap-south-1", ingress: "domain", domain: "nope.com", yes: true },
+        { clients, configPath: "/dev/null" },
+      ),
+    ).rejects.toThrow(/hosted zone/i);
   });
 });

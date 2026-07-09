@@ -7,6 +7,7 @@ import { ECSClient } from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import { STSClient } from "@aws-sdk/client-sts";
+import { Route53Client } from "@aws-sdk/client-route-53";
 
 export interface AwsClients {
   cfn: CloudFormationClient;
@@ -17,6 +18,7 @@ export interface AwsClients {
   ec2: EC2Client;
   logs: CloudWatchLogsClient;
   sts: STSClient;
+  route53: Route53Client;
 }
 
 export function makeClients(region: string): AwsClients {
@@ -31,5 +33,6 @@ export function makeClients(region: string): AwsClients {
     ec2: new EC2Client({ region }),
     logs: new CloudWatchLogsClient({ region }),
     sts: new STSClient({ region }),
+    route53: new Route53Client({ region }),
   };
 }
