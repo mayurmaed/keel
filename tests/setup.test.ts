@@ -76,6 +76,21 @@ describe("setupCommand", () => {
     expect(put.input).toMatchObject({ Name: "/keel/github-token", Type: "SecureString", Overwrite: true });
   });
 
+  it("stores the profile in config and sets AWS_PROFILE", async () => {
+    const { clients } = fakeClients();
+    const configPath = join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");
+    const prior = process.env.AWS_PROFILE;
+    try {
+      delete process.env.AWS_PROFILE;
+      await setupCommand({ region: "ap-south-1", profile: "keel", yes: true }, { clients, configPath });
+      expect(process.env.AWS_PROFILE).toBe("keel");
+      expect(JSON.parse(readFileSync(configPath, "utf8")).profile).toBe("keel");
+    } finally {
+      if (prior === undefined) delete process.env.AWS_PROFILE;
+      else process.env.AWS_PROFILE = prior;
+    }
+  });
+
   it("fails with an aws-configure hint when credentials are absent", async () => {
     const { clients } = fakeClients();
     (clients as any).sts = { send: async () => { throw new Error("Could not load credentials"); } };

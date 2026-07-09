@@ -17,6 +17,7 @@ export interface ControlPlane {
 
 export interface GlobalConfig {
   region: string;
+  profile?: string;
   baseDomain?: string;
   githubTokenStored?: boolean;
   controlPlane?: ControlPlane;

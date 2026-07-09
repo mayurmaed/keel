@@ -18,6 +18,7 @@ const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 export function awsDeps(io: AwsIo = {}) {
   const gcfg = io.gcfg ?? readGlobalConfig();
   if (!gcfg.controlPlane) throw new Error("control plane missing — run `keel setup` first");
+  if (gcfg.profile && !process.env.AWS_PROFILE) process.env.AWS_PROFILE = gcfg.profile;
   const clients = io.clients ?? makeClients(gcfg.region);
   const reg: RegistryDeps = { ddb: clients.ddb, ssm: clients.ssm, table: gcfg.controlPlane.tableName };
   return { gcfg, clients, reg, cp: gcfg.controlPlane, sleep: io.sleep ?? defaultSleep };

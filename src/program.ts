@@ -105,6 +105,7 @@ export function buildProgram(): Command {
     .option("--region <region>")
     .option("--domain <domain>", "base domain for app URLs (stored now, wired in Plan B2)")
     .option("--github-token <token>", "token for cloning private repos (stored in SSM)")
+    .option("--profile <profile>", "AWS CLI profile to use (remembered for all keel commands)")
     .option("--yes", "non-interactive: accept defaults")
     .action((opts) => setupCommand(opts));
 

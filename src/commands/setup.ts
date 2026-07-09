@@ -11,6 +11,7 @@ export interface SetupOpts {
   region?: string;
   domain?: string;
   githubToken?: string;
+  profile?: string;
   yes?: boolean;
 }
 
@@ -20,6 +21,7 @@ export async function setupCommand(
   opts: SetupOpts,
   io: { clients?: AwsClients; configPath?: string } = {},
 ): Promise<void> {
+  if (opts.profile) process.env.AWS_PROFILE = opts.profile;
   const region =
     opts.region ?? process.env.AWS_REGION ??
     (opts.yes ? "ap-south-1" : await input({ message: "AWS region", default: "ap-south-1" }));
@@ -53,6 +55,7 @@ export async function setupCommand(
   writeGlobalConfig(
     {
       region,
+      ...(opts.profile ? { profile: opts.profile } : {}),
       ...(opts.domain ? { baseDomain: opts.domain } : {}),
       githubTokenStored: Boolean(opts.githubToken),
       controlPlane: {
