@@ -20,9 +20,29 @@ that Phase 3 (auth) will extend.
 | Resource model | Project is a namespace; deploy/db/auth are independent resources in the registry. Any subset per project. |
 | DB isolation | Selectable per DB: `shared` (a database+user on one shared instance) or `dedicated` (own instance). Default `shared`. |
 | DB access | Public endpoint, firewalled to the developer's IP + the deployed app's security group. TLS required. |
-| App ↔ DB linking | Optional `"db": "<name>"` field in an app's `keel.json`; `keel deploy` injects `DATABASE_URL` and opens the firewall to the app. |
+| App ↔ DB linking | Optional `"db": "<name>"` field in an app's `keel.json`; `keel deploy` injects `DATABASE_URL` and opens the firewall to that one app. |
 | Provisioning | The CLI connects to the RDS endpoint (its IP is allowed) and runs `CREATE DATABASE`/`CREATE ROLE` via `pg`. |
 | New dependency | `pg` (node-postgres) — required to provision logical databases. |
+| Per-app isolation | Every app gets its **own** task security group (Phase 2 changes B2's shared task SG). A DB grants access to exactly one app's SG — real network isolation, not just credential separation. |
+
+## Prerequisite change to B2: per-app security groups
+
+B2 currently gives every deployed app a single *shared* task security group
+(`TaskSg`, in the `keel-ingress` stack). Phase 2's first task changes this so
+each app owns its security:
+
+- The per-app stack `keel-app-<name>` creates its **own** task security group
+  (ingress on the container port only from the ALB security group), and the
+  Fargate service uses it. The app stack **outputs** this SG id.
+- `keel-ingress` keeps only the ALB security group; the shared `TaskSg` is
+  removed. `ensureAppStack` no longer receives a `TaskSgId` parameter — it
+  creates one.
+- Existing B2 unit tests and the app-stack template update accordingly; this is
+  a self-contained refactor verified by the same live path (deploy still serves
+  the app) plus the new DB linking.
+
+This gives every app a distinct network identity, which is what lets a database
+grant access to exactly one app.
 
 ## The project/resource model
 
@@ -128,10 +148,11 @@ keel deploy               # reads /keel/db/api/url → writes /keel/myapp/env/DA
   DynamoDB, never logged, never printed except by explicit `keel db url`.
 - Master password for the shared instance in SSM, passed to CFN as a `NoEcho`
   parameter.
-- **Known limitation (documented, deferred):** B2 gives all deployed apps a
-  *shared* task security group, so opening the DB firewall to "the app" opens
-  it to any keel app at the network layer. Per-DB credentials still isolate
-  logically. Per-app task security groups are a future refinement.
+- **Per-app network isolation:** each app has its own task security group (the
+  B2 prerequisite change above), so a DB grants access to exactly one app —
+  another keel app on the same account cannot reach it at the network layer,
+  even before credentials. This is the "every application has its own security"
+  requirement, built in from the start.
 
 ## Error handling
 
@@ -161,10 +182,11 @@ keel deploy               # reads /keel/db/api/url → writes /keel/myapp/env/DA
 
 Migrations tooling, RDS Proxy / connection pooling, custom backup schedules
 (RDS 7-day default stays on), read replicas, Multi-AZ, `keel db connect` psql
-shell, per-app network isolation, and any auth (Phase 3).
+shell, and any auth (Phase 3). (Per-app network isolation is now **in** scope —
+the B2 prerequisite change above.)
 
 ## Deferred debt carried from B1/B2 (address opportunistically)
 
 The B1/B2 reviews deferred several minors (webhook `branch.S` guard already
-done; per-app SG isolation; `keel scale`; dashboard). None block Phase 2; the
-per-app-SG item is the one Phase 2 touches conceptually and is noted above.
+done; `keel scale`; dashboard). The per-app-SG item is now pulled **into**
+Phase 2 (the prerequisite change above). The rest don't block Phase 2.
