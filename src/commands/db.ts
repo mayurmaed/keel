@@ -26,6 +26,18 @@ export async function dbCreate(
     throw new Error(`--isolation must be "shared" or "dedicated", got "${isolation}"`);
   }
 
+  if (isolation === "dedicated") {
+    if (name.includes("_")) {
+      throw new Error(`dedicated databases can't contain underscores (the name becomes the RDS instance id "keel-db-${name}") — use hyphens-free lowercase letters/digits, or use --isolation shared`);
+    }
+    if (name.length > 55) {
+      throw new Error(`dedicated database names are limited to 55 characters (RDS instance id "keel-db-<name>" caps at 63)`);
+    }
+    if (name === "postgres") {
+      throw new Error(`"postgres" is reserved by RDS — pick another name`);
+    }
+  }
+
   const { gcfg, clients, reg } = awsDeps(io);
   if (await getDb(reg, name)) throw new Error(`database "${name}" already exists`);
   const pg = io.pg ?? realPg;

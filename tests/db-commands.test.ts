@@ -165,6 +165,30 @@ describe("dbCreate validation", () => {
     const io = { gcfg, clients, fetchImpl: fakeFetch() };
     await expect(dbCreate("api", { isolation: "cloud" }, io)).rejects.toThrow(/isolation/i);
   });
+
+  it("rejects underscores in dedicated databases before any AWS call", async () => {
+    const { calls, clients } = makeEnv();
+    const io = { gcfg, clients, fetchImpl: fakeFetch() };
+    await expect(dbCreate("api_db", { isolation: "dedicated" }, io)).rejects.toThrow(/underscores/i);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects reserved 'postgres' name in dedicated databases", async () => {
+    const { calls, clients } = makeEnv();
+    const io = { gcfg, clients, fetchImpl: fakeFetch() };
+    await expect(dbCreate("postgres", { isolation: "dedicated" }, io)).rejects.toThrow(/reserved/i);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("allows underscores in shared databases", async () => {
+    const { calls, clients, dbRecords } = makeEnv();
+    const { queries, factory } = fakePg();
+    const io = { gcfg, clients, pg: factory, fetchImpl: fakeFetch() };
+    await withoutLogs(() => dbCreate("api_db", { isolation: "shared" }, io));
+    expect(calls.some((c) => c.cmd === "CreateStackCommand")).toBe(true);
+    const rec = dbRecords.get("api_db");
+    expect(rec.isolation).toBe("shared");
+  });
 });
 
 describe("dbList", () => {
