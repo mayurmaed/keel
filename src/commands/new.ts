@@ -27,6 +27,8 @@ export async function newCommand(
     env: {},
     healthPath: "/",
     ...(repo ? { repo } : {}),
+    ...(opts.db ? { db: opts.db } : {}),
+    ...(opts.project ? { project: opts.project } : {}),
   };
   const errs = validateAppConfig(cfg);
   if (errs.length) throw new Error(errs.join("; "));

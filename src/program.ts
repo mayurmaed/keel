@@ -26,6 +26,8 @@ export function buildProgram(): Command {
     .option("--target <target>", '"local" or "aws"')
     .option("--repo <url>")
     .option("--branch <branch>")
+    .option("--db <name>", "link a keel database (DATABASE_URL injected on deploy)")
+    .option("--project <project>")
     .action(async (opts) => {
       await newCommand(opts);
       const cfg = loadAppConfig(process.cwd());
