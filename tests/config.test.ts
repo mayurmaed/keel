@@ -65,4 +65,24 @@ describe("load/save", () => {
     saveAppConfig(dir, { name: "BAD NAME", port: 3000, target: "local" } as AppConfig);
     expect(() => loadAppConfig(dir)).toThrow(/name/);
   });
+
+  it("rejects db field if not matching DB_NAME_RE pattern", () => {
+    expect(validateAppConfig({ name: "web", port: 80, target: "local", db: "My-DB" })).toContainEqual(
+      expect.stringMatching(/db must be a lowercase/),
+    );
+  });
+
+  it("accepts valid db field", () => {
+    expect(validateAppConfig({ name: "web", port: 80, target: "local", db: "api_db" })).toEqual([]);
+  });
+
+  it("rejects project field if not a string", () => {
+    expect(validateAppConfig({ name: "web", port: 80, target: "local", project: 5 })).toContainEqual(
+      expect.stringMatching(/project must be a string/),
+    );
+  });
+
+  it("accepts valid project field", () => {
+    expect(validateAppConfig({ name: "web", port: 80, target: "local", project: "my-project" })).toEqual([]);
+  });
 });
