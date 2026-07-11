@@ -58,17 +58,6 @@ Resources:
       ToPort: 443
       CidrIp: 0.0.0.0/0
 
-  TaskSg:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: keel task ingress - from ALB only
-      VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 0
-          ToPort: 65535
-          SourceSecurityGroupId: !Ref AlbSg
-
   Alb:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -120,7 +109,6 @@ Outputs:
   AlbDns: { Value: !GetAtt Alb.DNSName }
   AlbArn: { Value: !Ref Alb }
   AlbSgId: { Value: !Ref AlbSg }
-  TaskSgId: { Value: !Ref TaskSg }
   HttpsListenerArn:
     Condition: IsDomain
     Value: !Ref HttpsListener

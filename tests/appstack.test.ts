@@ -26,9 +26,9 @@ describe("ensureAppStack — port mode", () => {
   const gcfg = { region: "ap-south-1", ingress: "port", controlPlane: { clusterName: "keel-cluster", vpcId: "vpc-1", subnetIds: ["s-1", "s-2"] } } as any;
 
   it("deploys the app stack and returns the port-mode URL", async () => {
-    const { seenParams, clients } = fakeClients({ Url: "http://keel-alb-1.elb.amazonaws.com:8001" });
-    const url = await ensureAppStack(clients, gcfg, app, ingress, 8001);
-    expect(url).toBe("http://keel-alb-1.elb.amazonaws.com:8001");
+    const { seenParams, clients } = fakeClients({ Url: "http://keel-alb-1.elb.amazonaws.com:8001", TaskSgId: "sg-app" });
+    const result = await ensureAppStack(clients, gcfg, app, ingress, 8001);
+    expect(result).toEqual({ url: "http://keel-alb-1.elb.amazonaws.com:8001", taskSgId: "sg-app" });
 
     const params = Object.fromEntries(seenParams[0].map((p: any) => [p.ParameterKey, p.ParameterValue]));
     expect(params.AppName).toBe("myapp");
@@ -36,7 +36,8 @@ describe("ensureAppStack — port mode", () => {
     expect(params.AlbPort).toBe("8001");
     expect(params.Cluster).toBe("keel-cluster");
     expect(params.Subnets).toBe("s-1,s-2");
-    expect(params.TaskSgId).toBe("sg-task");
+    expect(params.AlbSgId).toBe("sg-alb");
+    expect(params.TaskSgId).toBeUndefined();
     expect(params.ContainerPort).toBe("3000");
     expect(params.HealthPath).toBe("/health");
   });
@@ -53,9 +54,9 @@ describe("ensureAppStack — domain mode", () => {
   const domainIngress = { ...ingress, httpsListenerArn: "arn:listener:https" };
 
   it("deploys with domain params and returns the domain URL", async () => {
-    const { seenParams, clients } = fakeClients({ Url: "https://myapp.example.com" });
-    const url = await ensureAppStack(clients, gcfg, app, domainIngress, 8002);
-    expect(url).toBe("https://myapp.example.com");
+    const { seenParams, clients } = fakeClients({ Url: "https://myapp.example.com", TaskSgId: "sg-app" });
+    const result = await ensureAppStack(clients, gcfg, app, domainIngress, 8002);
+    expect(result).toEqual({ url: "https://myapp.example.com", taskSgId: "sg-app" });
 
     const params = Object.fromEntries(seenParams[0].map((p: any) => [p.ParameterKey, p.ParameterValue]));
     expect(params.BaseDomain).toBe("example.com");
@@ -69,6 +70,6 @@ describe("ensureAppStack — domain mode", () => {
 describe("app template", () => {
   const tpl = readFileSync("infra/app.yaml", "utf8");
   it("declares target group, fargate service, and host-header routing", () => {
-    for (const k of ["TargetGroup", "AWS::ECS::Service", "host-header", "TargetType"]) expect(tpl).toContain(k);
+    for (const k of ["TargetGroup", "AWS::ECS::Service", "host-header", "TargetType", "AWS::EC2::SecurityGroup"]) expect(tpl).toContain(k);
   });
 });

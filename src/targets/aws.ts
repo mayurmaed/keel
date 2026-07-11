@@ -92,8 +92,8 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
       last = status;
     }
     if (status === "live") {
-      const url = await ensureAppStack(clients, gcfg, app, ingress, app.albPort ?? 8001);
-      console.log(`live: ${url}`);
+      const appStack = await ensureAppStack(clients, gcfg, app, ingress, app.albPort ?? 8001);
+      console.log(`live: ${appStack.url}`);
       return;
     }
     if (status === "failed") {

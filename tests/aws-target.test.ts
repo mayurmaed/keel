@@ -42,8 +42,8 @@ function fakeIo(deployStatuses: string[]) {
       const name = c.input.StackName as string;
       if (!createdStacks.has(name)) throw Object.assign(new Error("does not exist"), { name: "ValidationError" });
       const outputs = name === "keel-ingress"
-        ? { AlbDns: "alb.example", AlbArn: "arn:alb", AlbSgId: "sg-alb", TaskSgId: "sg-task" }
-        : { Url: "http://alb.example:8001" };
+        ? { AlbDns: "alb.example", AlbArn: "arn:alb", AlbSgId: "sg-alb" }
+        : { Url: "http://alb.example:8001", TaskSgId: "sg-app" };
       return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: Object.entries(outputs).map(([k, v]) => ({ OutputKey: k, OutputValue: v })) }] };
     }
     if (cmd === "FilterLogEventsCommand") return { events: [{ timestamp: 1720000000000, message: "listening on 3000\n" }] };

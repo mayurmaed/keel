@@ -10,7 +10,7 @@ Parameters:
     Type: String
   Subnets:
     Type: List<AWS::EC2::Subnet::Id>
-  TaskSgId:
+  AlbSgId:
     Type: String
   AlbArn:
     Type: String
@@ -44,6 +44,17 @@ Conditions:
   IsPort: !Equals [!Ref Mode, port]
 
 Resources:
+  TaskSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "keel app ${AppName} - ingress only from the ALB"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !Ref AlbSgId
+
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -110,7 +121,7 @@ Resources:
       NetworkConfiguration:
         AwsvpcConfiguration:
           Subnets: !Ref Subnets
-          SecurityGroups: [!Ref TaskSgId]
+          SecurityGroups: [!Ref TaskSg]
           AssignPublicIp: ENABLED
       LoadBalancers:
         - TargetGroupArn: !Ref TargetGroup
@@ -131,7 +142,7 @@ Resources:
       NetworkConfiguration:
         AwsvpcConfiguration:
           Subnets: !Ref Subnets
-          SecurityGroups: [!Ref TaskSgId]
+          SecurityGroups: [!Ref TaskSg]
           AssignPublicIp: ENABLED
       LoadBalancers:
         - TargetGroupArn: !Ref TargetGroup
@@ -141,3 +152,5 @@ Resources:
 Outputs:
   Url:
     Value: !If [IsPort, !Sub "http://${AlbDns}:${AlbPort}", !Sub "https://${AppName}.${BaseDomain}"]
+  TaskSgId:
+    Value: !GetAtt TaskSg.GroupId
