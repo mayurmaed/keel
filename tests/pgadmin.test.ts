@@ -22,7 +22,9 @@ describe("pgadmin", () => {
     const { state, factory } = fakePg();
     await createLogicalDb(factory, "postgresql://admin@localhost/postgres", "api", "abc123");
     expect(state.queries).toEqual([
+      'DROP ROLE IF EXISTS "api"',
       'CREATE ROLE "api" LOGIN PASSWORD \'abc123\'',
+      'GRANT "api" TO "admin"',
       'CREATE DATABASE "api" OWNER "api"',
     ]);
     expect(state.ended).toBe(true);

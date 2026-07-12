@@ -115,8 +115,8 @@ describe("dbCreate shared", () => {
 
     expect(calls.some((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-db-shared")).toBe(true);
     expect(calls.some((c) => c.cmd === "AuthorizeSecurityGroupIngressCommand")).toBe(true);
-    expect(queries[0]).toContain("CREATE ROLE");
-    expect(queries[1]).toContain("CREATE DATABASE");
+    expect(queries.some((q) => q.includes("CREATE ROLE"))).toBe(true);
+    expect(queries.some((q) => q.includes("CREATE DATABASE"))).toBe(true);
     expect(ssmParams.get("/keel/db/api/url")).toMatch(/^postgres:\/\/api:/);
     const rec = dbRecords.get("api");
     expect(rec.isolation).toBe("shared");

@@ -29,10 +29,16 @@ function ident(name: string): string {
 export async function createLogicalDb(factory: PgFactory, adminUrl: string, name: string, password: string): Promise<void> {
   const id = ident(name);
   if (!HEX_RE.test(password)) throw new Error("db passwords must be hex-only (generated) — refusing to interpolate arbitrary strings into SQL");
+  const admin = ident(new URL(adminUrl).username); // validated like any identifier
   const c = factory(adminUrl);
   await c.connect();
   try {
+    // DROP first: a partially-failed prior create leaves an ownerless role; keel's
+    // registry duplicate-guard means a healthy db never reaches this path.
+    await c.query(`DROP ROLE IF EXISTS ${id}`);
     await c.query(`CREATE ROLE ${id} LOGIN PASSWORD '${password}'`);
+    // RDS master isn't superuser; PG16 requires SET ROLE rights to assign ownership.
+    await c.query(`GRANT ${id} TO ${admin}`);
     await c.query(`CREATE DATABASE ${id} OWNER ${id}`);
   } finally {
     await c.end();
