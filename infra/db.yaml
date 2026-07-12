@@ -7,6 +7,10 @@ Parameters:
   MasterPassword:
     Type: String
     NoEcho: true
+  BackupDays:
+    Type: String
+    Default: "7"
+    Description: RDS backup retention in days (free-plan AWS accounts cap this at 1)
   VpcId:
     Type: String
   Subnets:
@@ -44,7 +48,7 @@ Resources:
       MasterUserPassword: !Ref MasterPassword
       PubliclyAccessible: true
       StorageEncrypted: true
-      BackupRetentionPeriod: 7
+      BackupRetentionPeriod: !Ref BackupDays
       DBSubnetGroupName: !Ref SubnetGroup
       VPCSecurityGroups: [!GetAtt DbSg.GroupId]
       DBName: !If [HasDbName, !Ref DbName, !Ref "AWS::NoValue"]

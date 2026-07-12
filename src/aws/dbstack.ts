@@ -19,7 +19,7 @@ export interface DbInstanceInfo {
 export async function ensureDbInstance(
   clients: Pick<AwsClients, "cfn" | "ssm">,
   gcfg: GlobalConfig,
-  opts: { stackName: string; instanceId: string; masterPasswordSsm: string; dbName?: string },
+  opts: { stackName: string; instanceId: string; masterPasswordSsm: string; dbName?: string; backupDays?: number },
 ): Promise<DbInstanceInfo> {
   if (!gcfg.controlPlane) throw new Error("run `keel setup` first");
 
@@ -40,6 +40,7 @@ export async function ensureDbInstance(
     VpcId: gcfg.controlPlane.vpcId,
     Subnets: gcfg.controlPlane.subnetIds.join(","),
     DbName: opts.dbName ?? "",
+    BackupDays: String(opts.backupDays ?? 7),
   });
 
   return { host: out.Endpoint, dbSgId: out.DbSgId, masterPassword };

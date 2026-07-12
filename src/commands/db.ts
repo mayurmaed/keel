@@ -15,7 +15,7 @@ function notFound(name: string): Error {
 
 export async function dbCreate(
   name: string,
-  opts: { isolation?: string; project?: string } = {},
+  opts: { isolation?: string; project?: string; backupDays?: string } = {},
   io: DbIo = {},
 ): Promise<void> {
   if (!DB_NAME_RE.test(name)) {
@@ -49,6 +49,7 @@ export async function dbCreate(
     stack = "keel-db-shared";
     ({ host, dbSgId, masterPassword } = await ensureDbInstance(clients, gcfg, {
       stackName: stack, instanceId: stack, masterPasswordSsm: "/keel/db-shared/master",
+      ...(opts.backupDays ? { backupDays: Number(opts.backupDays) } : {}),
     }));
     await setMasterIpRule(clients.ec2, dbSgId, await getMyIp(fetchImpl));
     const adminUrl = `postgres://keeladmin:${masterPassword}@${host}:5432/postgres?sslmode=require`;
@@ -60,6 +61,7 @@ export async function dbCreate(
     stack = `keel-db-${name}`;
     ({ host, dbSgId, masterPassword } = await ensureDbInstance(clients, gcfg, {
       stackName: stack, instanceId: stack, masterPasswordSsm: `/keel/db/${name}/master`, dbName: name,
+      ...(opts.backupDays ? { backupDays: Number(opts.backupDays) } : {}),
     }));
     await setMasterIpRule(clients.ec2, dbSgId, await getMyIp(fetchImpl));
     url = `postgres://keeladmin:${masterPassword}@${host}:5432/${name}?sslmode=require`;

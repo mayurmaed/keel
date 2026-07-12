@@ -130,7 +130,8 @@ export function buildProgram(): Command {
   db.command("create <name>")
     .option("--isolation <mode>", '"shared" (default) or "dedicated"', "shared")
     .option("--project <project>")
-    .action((name: string, opts: { isolation: string; project?: string }) => dbCreate(name, opts));
+    .option("--backup-days <days>", "RDS backup retention (free-plan AWS accounts cap this at 1)", "7")
+    .action((name: string, opts: { isolation: string; project?: string; backupDays?: string }) => dbCreate(name, opts));
   db.command("list").action(() => dbList());
   db.command("url <name>").action((name: string) => dbUrl(name));
   db.command("allow-ip [ip]").option("--db <name>")
