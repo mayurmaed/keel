@@ -10,8 +10,14 @@ export type PgFactory = (url: string) => PgClient;
 
 // ponytail: RDS's CA isn't in node's default bundle; TLS is still enforced on the wire.
 // Import the RDS CA bundle if paranoia ever demands it.
-export const realPg: PgFactory = (url) =>
-  new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } }) as unknown as PgClient;
+// sslmode in the URL is stripped because pg >= 8.16 treats sslmode=require as
+// verify-full, overriding the explicit ssl option below — the URL keeps
+// ?sslmode=require for psql/libpq consumers; node-pg gets ssl via the option.
+export const realPg: PgFactory = (url) => {
+  const u = new URL(url);
+  u.searchParams.delete("sslmode");
+  return new pg.Client({ connectionString: u.toString(), ssl: { rejectUnauthorized: false } }) as unknown as PgClient;
+};
 
 const HEX_RE = /^[0-9a-f]+$/;
 
