@@ -205,6 +205,92 @@ gh api repos/you/myapp/hooks -f 'name=web' -F 'active=true' -f 'events[]=push' \
 
 After that, every `git push` to your tracked branch deploys automatically.
 
+### Databases (`keel db`)
+
+Keel can provision managed Postgres databases in the AWS account configured by
+`keel setup`. Creating a database prints its connection string once, stores it
+encrypted in SSM at `/keel/db/<name>/url`, and opens its firewall to your
+current public IP.
+
+```bash
+# Shared isolation is the default. The first shared database provisions the
+# keel-db-shared db.t4g.micro RDS instance (about 8 minutes); later databases
+# on that instance are created immediately.
+keel db create myapp
+
+# Give a database a project label, or request a physically isolated RDS instance.
+keel db create myapp --project payments
+keel db create billing --isolation dedicated
+
+# Free-plan AWS accounts must use one day of backup retention.
+keel db create myapp --backup-days 1
+```
+
+`--isolation shared` is the default: it creates one logical database and role
+on the shared `db.t4g.micro` RDS instance, `keel-db-shared`, which costs about
+$13/month and is shared by all shared-mode databases. `--isolation dedicated`
+creates its own `keel-db-<name>` RDS instance, also about $13/month per
+database, for physical isolation. Dedicated names become the RDS instance ID
+and DB name, so they cannot contain underscores, must be 55 characters or
+fewer, and cannot be `postgres`.
+
+In both modes, a name must match `^[a-z][a-z0-9_]{0,62}$`. `--backup-days`
+defaults to `7`; free-plan AWS accounts cap retention at `1`, so use
+`--backup-days 1` there.
+
+```bash
+# Show: name  isolation  project  host
+keel db list
+
+# Print the connection string stored in SSM.
+keel db url myapp
+
+# Re-open the database firewall after your IP changes. With no --db, this
+# applies to all of your databases; omit the IP to auto-detect your current one.
+keel db allow-ip
+keel db allow-ip 203.0.113.10 --db myapp
+
+# Destroy a database (asks for confirmation unless --yes is supplied).
+keel db destroy myapp
+keel db destroy myapp --yes
+```
+
+Destroying a shared database drops its logical database and role; destroying a
+dedicated database deletes its instance stack. Both remove the SSM URL and
+registry record. Destroying the last shared database leaves `keel-db-shared`
+running (about $13/month); Keel prints the manual command below if you want to
+remove it completely:
+
+```bash
+aws cloudformation delete-stack --stack-name keel-db-shared
+```
+
+### Connecting from your machine
+
+Your current IP is allowlisted when the database is created, so you can connect
+with `psql` directly. The URL retains `?sslmode=require` for psql/libpq.
+
+```bash
+psql "$(keel db url myapp)"
+```
+
+### Link a database to an app
+
+Add the database name to the app's `keel.json`. On `keel deploy` for the AWS
+target, Keel injects `DATABASE_URL` from SSM and intends to open the database
+firewall to the app's security group.
+
+```json
+{
+  "name": "myapp",
+  "target": "aws",
+  "db": "myapp"
+}
+```
+
+App linking is pending real-AWS verification (issue #7) and a known deploy
+issue is being fixed (issue #15), so linking is currently best-effort.
+
 ### Command reference
 
 | Command | Local target | AWS target |
@@ -216,6 +302,11 @@ After that, every `git push` to your tracked branch deploys automatically.
 | `keel logs` | `docker logs` | CloudWatch (`--follow` supported) |
 | `keel destroy` | removes the container | deletes the app stack, records, secrets |
 | `keel setup` | — | deploys the control plane |
+| `keel db create <name>` | — | provisions Postgres; prints the connection URL once |
+| `keel db list` | — | lists `name  isolation  project  host` |
+| `keel db url <name>` | — | prints the connection URL stored in SSM |
+| `keel db allow-ip [ip]` | — | allowlists an IP for all databases or `--db <name>` |
+| `keel db destroy <name>` | — | removes the database after confirmation (`--yes` skips it) |
 
 ---
 
