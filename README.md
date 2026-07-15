@@ -4,6 +4,20 @@ Deploy apps to your own AWS account (or local Docker). Render/Supabase
 replacement you run yourself. Phase 1: deploy pipeline. Spec and plans in
 `docs/superpowers/`.
 
+**Why:** Render/Supabase-style PaaS bills per-seat and locks your app behind
+someone else's platform. Keel gives you the same `git push`-to-live-URL
+workflow, but everything runs in **your own AWS account** — you own the
+infra, the bill is just your AWS usage, and there's no vendor lock-in.
+
+**How it deploys:** a GitHub webhook fires on push → CodeBuild builds your
+Docker image → pushes it to ECR → registers an ECS/Fargate task definition
+and rolls it out behind a shared ALB. State lives in DynamoDB, secrets in SSM
+Parameter Store. Full diagram:
+[docs/GUIDE.md § Architecture](docs/GUIDE.md#1-architecture).
+
+**Tested:** 118 passing tests (`npm test`, vitest) — unit-level, no AWS
+account or network access needed to run them.
+
 **→ [docs/GUIDE.md](docs/GUIDE.md)** — architecture, deploy-flow diagrams, and
 how to use and test every piece.
 
