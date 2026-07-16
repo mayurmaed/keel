@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: keel per-auth GoTrue runtime - target group, fargate service, routing (port or domain mode)
+
+Parameters:
+  AuthName:
+    Type: String
+  Project:
+    Type: String
+  Cluster:
+    Type: String
+  VpcId:
+    Type: String
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  AlbArn:
+    Type: String
+  AlbDns:
+    Type: String
+  AlbSgId:
+    Type: String
+  Mode:
+    Type: String
+  AlbPort:
+    Type: String
+    Default: "8100"
+  Priority:
+    Type: String
+    Default: "100"
+  BaseDomain:
+    Type: String
+    Default: ""
+  HttpsListenerArn:
+    Type: String
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Default: ""
+  DbSgId:
+    Type: String
+  DbUrlParam:
+    Type: String
+  JwtSecretParam:
+    Type: String
+  TaskExecRoleArn:
+    Type: String
+  LogGroup:
+    Type: String
+  Image:
+    Type: String
+    Default: supabase/auth:v2.151.0
+
+Conditions:
+  IsDomain: !Equals [!Ref Mode, domain]
+  IsPort: !Equals [!Ref Mode, port]
+  HasDb: !Not [!Equals [!Ref DbSgId, ""]]
+
+Resources:
+  TaskSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "keel auth ${AuthName} - ingress only from the ALB"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 9999
+          ToPort: 9999
+          SourceSecurityGroupId: !Ref AlbSgId
+      Tags:
+        - Key: "keel:project"
+          Value: !Ref Project
+
+  DbIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HasDb
+    Properties:
+      GroupId: !Ref DbSgId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref TaskSg
+      Description: !Sub "keel:auth:${AuthName}"
+
+  TaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "keel-auth-${AuthName}"
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      Cpu: "256"
+      Memory: "512"
+      ExecutionRoleArn: !Ref TaskExecRoleArn
+      ContainerDefinitions:
+        - Name: auth
+          Image: !Ref Image
+          Essential: true
+          PortMappings:
+            - ContainerPort: 9999
+          Environment:
+            - Name: GOTRUE_DB_DRIVER
+              Value: postgres
+            - Name: GOTRUE_API_HOST
+              Value: 0.0.0.0
+            - Name: PORT
+              Value: "9999"
+            - Name: GOTRUE_JWT_EXP
+              Value: "3600"
+            - Name: GOTRUE_JWT_AUD
+              Value: authenticated
+            - Name: GOTRUE_MAILER_AUTOCONFIRM
+              Value: "true"
+            - Name: GOTRUE_DISABLE_SIGNUP
+              Value: "false"
+            - Name: GOTRUE_EXTERNAL_EMAIL_ENABLED
+              Value: "true"
+            - Name: GOTRUE_EXTERNAL_PHONE_ENABLED
+              Value: "false"
+            - Name: GOTRUE_SITE_URL
+              Value: !If [IsPort, !Sub "http://${AlbDns}:${AlbPort}", !Sub "https://auth-${AuthName}.${BaseDomain}"]
+          Secrets:
+            - Name: GOTRUE_JWT_SECRET
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${JwtSecretParam}"
+            - Name: GOTRUE_DB_DATABASE_URL
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DbUrlParam}"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: !Sub "auth-${AuthName}"
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      Protocol: HTTP
+      Port: 9999
+      VpcId: !Ref VpcId
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /health
+      Matcher:
+        HttpCode: "200-399"
+
+  PortListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: IsPort
+    Properties:
+      LoadBalancerArn: !Ref AlbArn
+      Port: !Ref AlbPort
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  DomainRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: IsDomain
+    Properties:
+      ListenerArn: !Ref HttpsListenerArn
+      Priority: !Ref Priority
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values: [!Sub "auth-${AuthName}.${BaseDomain}"]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: IsDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "auth-${AuthName}.${BaseDomain}"
+      Type: CNAME
+      TTL: "300"
+      ResourceRecords: [!Ref AlbDns]
+
+  ServicePort:
+    Type: AWS::ECS::Service
+    Condition: IsPort
+    DependsOn: PortListener
+    Properties:
+      Cluster: !Ref Cluster
+      ServiceName: !Sub "keel-auth-${AuthName}"
+      TaskDefinition: !Ref TaskDef
+      DesiredCount: 1
+      LaunchType: FARGATE
+      HealthCheckGracePeriodSeconds: 60
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref Subnets
+          SecurityGroups: [!Ref TaskSg]
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerName: auth
+          ContainerPort: 9999
+
+  ServiceDomain:
+    Type: AWS::ECS::Service
+    Condition: IsDomain
+    DependsOn: DomainRule
+    Properties:
+      Cluster: !Ref Cluster
+      ServiceName: !Sub "keel-auth-${AuthName}"
+      TaskDefinition: !Ref TaskDef
+      DesiredCount: 1
+      LaunchType: FARGATE
+      HealthCheckGracePeriodSeconds: 60
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref Subnets
+          SecurityGroups: [!Ref TaskSg]
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerName: auth
+          ContainerPort: 9999
+
+Outputs:
+  Url:
+    Value: !If [IsPort, !Sub "http://${AlbDns}:${AlbPort}", !Sub "https://auth-${AuthName}.${BaseDomain}"]
+  TaskSgId:
+    Value: !GetAtt TaskSg.GroupId
