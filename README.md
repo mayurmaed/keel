@@ -7,6 +7,14 @@ replacement you run yourself. Phase 1: deploy pipeline. Spec and plans in
 **→ [docs/GUIDE.md](docs/GUIDE.md)** — architecture, deploy-flow diagrams, and
 how to use and test every piece.
 
+## Demo
+
+![keel new, deploy, status, curl, logs, destroy — the full local-Docker flow in one take](demo/keel-demo.gif)
+
+*90 seconds, unedited: register an app, deploy it to a local Docker
+container, check status, hit it with curl, tail logs, tear it down. The same
+commands target your own AWS account with `--target aws`.*
+
 ## Quickstart (local target)
 
 Requirements: Node ≥ 20, Docker. Your app repo must contain a `Dockerfile`.
