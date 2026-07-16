@@ -9,7 +9,7 @@ import { readGlobalConfig, type GlobalConfig } from "../aws/globalconfig.js";
 import { ensureIngress } from "../aws/ingress.js";
 import { ensureAppStack } from "../aws/appstack.js";
 import {
-  ensureWebhookSecret, getApp, getDb, getDeploy, listApps, listDeploys, listEnvVars, newDeployId,
+  ensureWebhookSecret, getApp, getDb, getAuth, getDeploy, listApps, listDeploys, listEnvVars, newDeployId,
   putApp, putDeploy, setEnvVar, unsetEnvVar, type DbRecord, type RegistryDeps,
 } from "../aws/registry.js";
 
@@ -42,6 +42,7 @@ export async function registerAwsApp(cfg: AppConfig, io: AwsIo = {}): Promise<vo
     ...(cfg.dir ? { dir: cfg.dir } : {}), cpu: 256, memory: 512,
     healthPath: cfg.healthPath, createdAt: new Date().toISOString(), albPort,
     ...(cfg.db ? { db: cfg.db } : {}), ...(cfg.project ? { project: cfg.project } : {}),
+    ...(cfg.auth ? { auth: cfg.auth } : {}),
   });
   const secret = await ensureWebhookSecret(reg, cfg.name);
   const hookUrl = `${cp.webhookBase}/${cfg.name}`;
@@ -79,6 +80,13 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
     if (!dbRec) throw new Error(`database "${cfg.db}" not found — create it with \`keel db create ${cfg.db}\``);
     const urlRes = await clients.ssm.send(new GetParameterCommand({ Name: `/keel/db/${cfg.db}/url`, WithDecryption: true }));
     await setEnvVar(reg, cfg.name, "DATABASE_URL", urlRes.Parameter!.Value as string);
+  }
+  if (cfg.auth) {
+    const authRec = await getAuth(reg, cfg.auth);
+    if (!authRec) throw new Error(`auth "${cfg.auth}" not found — create it with \`keel auth create ${cfg.auth} --db <db>\``);
+    const jwtRes = await clients.ssm.send(new GetParameterCommand({ Name: `/keel/auth/${cfg.auth}/jwt-secret`, WithDecryption: true }));
+    await setEnvVar(reg, cfg.name, "GOTRUE_URL", authRec.url);
+    await setEnvVar(reg, cfg.name, "JWT_SECRET", jwtRes.Parameter!.Value as string);
   }
   const id = newDeployId();
   await putDeploy(reg, { app: app.name, id, status: "queued", updatedAt: new Date().toISOString() });

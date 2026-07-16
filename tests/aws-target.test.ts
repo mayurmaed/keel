@@ -43,6 +43,12 @@ function fakeIo(deployStatuses: string[]) {
         }
         return {};
       }
+      if (pk.startsWith("AUTH#")) {
+        if (pk === "AUTH#authapp") {
+          return { Item: { PK: "AUTH#authapp", SK: "META", name: "authapp", db: "api", project: "authapp", host: "alb.example:8100", port: 8100, stack: "keel-auth-authapp", taskSgId: "sg-auth", url: "http://alb.example:8100", createdAt: "t" } };
+        }
+        return {};
+      }
       if (String(c.input.Key.SK) === "META") {
         return { Item: { PK: "APP#web", SK: "META", name: "web", repo: cfg.repo, branch: "main", port: 3000, cpu: 256, memory: 512, healthPath: "/", createdAt: "t" } };
       }
@@ -135,6 +141,31 @@ describe("deployAws", () => {
     const { calls, io } = fakeIo(["queued", "building", "live"]);
     const dbCfg = { ...cfg, db: "missing" };
     await expect(deployAws(dbCfg, io)).rejects.toThrow(/keel db create missing/);
+    expect(calls.some((c) => c.cmd === "StartBuildCommand")).toBe(false);
+  });
+
+  it("deployAws with a linked auth injects GOTRUE_URL + JWT_SECRET before the build", async () => {
+    const { calls, io } = fakeIo(["queued", "building", "live"]);
+    const authCfg = { ...cfg, auth: "authapp" };
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      await deployAws(authCfg, io);
+    } finally {
+      console.log = orig;
+    }
+    const gotrueIdx = calls.findIndex((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/web/env/GOTRUE_URL");
+    const jwtIdx = calls.findIndex((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/web/env/JWT_SECRET");
+    const startBuildIdx = calls.findIndex((c) => c.cmd === "StartBuildCommand");
+    expect(gotrueIdx).toBeGreaterThanOrEqual(0);
+    expect(jwtIdx).toBeGreaterThanOrEqual(0);
+    expect(Math.max(gotrueIdx, jwtIdx)).toBeLessThan(startBuildIdx);
+  });
+
+  it("deployAws with a missing auth fails fast", async () => {
+    const { calls, io } = fakeIo(["queued", "building", "live"]);
+    const authCfg = { ...cfg, auth: "missing" };
+    await expect(deployAws(authCfg, io)).rejects.toThrow(/keel auth create missing/);
     expect(calls.some((c) => c.cmd === "StartBuildCommand")).toBe(false);
   });
 });

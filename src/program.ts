@@ -28,6 +28,7 @@ export function buildProgram(): Command {
     .option("--repo <url>")
     .option("--branch <branch>")
     .option("--db <name>", "link a keel database (DATABASE_URL injected on deploy)")
+    .option("--auth <name>", "link a keel auth service (GOTRUE_URL + JWT_SECRET injected on deploy)")
     .option("--project <project>")
     .action(async (opts) => {
       await newCommand(opts);
