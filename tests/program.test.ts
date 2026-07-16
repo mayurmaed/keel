@@ -10,7 +10,7 @@ describe("program", () => {
 
   it("registers all phase-1 commands", () => {
     const names = buildProgram().commands.map((c) => c.name());
-    for (const n of ["new", "deploy", "list", "logs", "destroy", "env", "setup", "status", "db"]) {
+    for (const n of ["new", "deploy", "list", "logs", "destroy", "env", "setup", "status", "db", "auth"]) {
       expect(names).toContain(n);
     }
   });
