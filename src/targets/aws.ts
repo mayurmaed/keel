@@ -8,7 +8,6 @@ import { makeClients, type AwsClients } from "../aws/clients.js";
 import { readGlobalConfig, type GlobalConfig } from "../aws/globalconfig.js";
 import { ensureIngress } from "../aws/ingress.js";
 import { ensureAppStack } from "../aws/appstack.js";
-import { allowAppSg } from "../aws/dbstack.js";
 import {
   ensureWebhookSecret, getApp, getDb, getDeploy, listApps, listDeploys, listEnvVars, newDeployId,
   putApp, putDeploy, setEnvVar, unsetEnvVar, type DbRecord, type RegistryDeps,
@@ -101,8 +100,7 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
       last = status;
     }
     if (status === "live") {
-      const appStack = await ensureAppStack(clients, gcfg, app, ingress, app.albPort ?? 8001);
-      if (dbRec) await allowAppSg(clients.ec2, dbRec.dbSgId, appStack.taskSgId, cfg.name);
+      const appStack = await ensureAppStack(clients, gcfg, app, ingress, app.albPort ?? 8001, dbRec?.dbSgId);
       console.log(`live: ${appStack.url}`);
       return;
     }

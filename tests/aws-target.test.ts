@@ -93,7 +93,10 @@ describe("deployAws", () => {
     const startBuildIdx = calls.findIndex((c) => c.cmd === "StartBuildCommand");
     expect(ingressCreateIdx).toBeGreaterThanOrEqual(0);
     expect(ingressCreateIdx).toBeLessThan(startBuildIdx);
-    expect(calls.some((c) => c.cmd === "CreateStackCommand" && String(c.input.StackName).startsWith("keel-app-"))).toBe(true);
+    const appStack = calls.find((c) => c.cmd === "CreateStackCommand" && String(c.input.StackName).startsWith("keel-app-"));
+    expect(appStack).toBeDefined();
+    const appParams = Object.fromEntries(appStack!.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));
+    expect(appParams.DbSgId).toBe("");
     expect(logs.some((l) => l.includes("http://alb.example:8001"))).toBe(true);
   });
 
@@ -107,7 +110,7 @@ describe("deployAws", () => {
     await expect(deployAws(cfg, io)).rejects.toThrow(/timed out/i);
   });
 
-  it("deployAws with a linked db injects DATABASE_URL before the build and grants the app SG", async () => {
+  it("deployAws with a linked db injects DATABASE_URL before the build and grants via the app stack", async () => {
     const { calls, io } = fakeIo(["queued", "building", "live"]);
     const dbCfg = { ...cfg, db: "api" };
     const orig = console.log;
@@ -122,10 +125,10 @@ describe("deployAws", () => {
     expect(putUrlIdx).toBeGreaterThanOrEqual(0);
     expect(putUrlIdx).toBeLessThan(startBuildIdx);
 
-    const auth = calls.find((c) => c.cmd === "AuthorizeSecurityGroupIngressCommand");
-    expect(auth).toBeDefined();
-    expect(auth!.input.GroupId).toBe("sg-db");
-    expect(auth!.input.IpPermissions[0].UserIdGroupPairs[0].GroupId).toBe("sg-app");
+    const appStack = calls.find((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-app-web");
+    const appParams = Object.fromEntries(appStack!.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));
+    expect(appParams.DbSgId).toBe("sg-db");
+    expect(calls.some((c) => c.cmd === "AuthorizeSecurityGroupIngressCommand")).toBe(false);
   });
 
   it("deployAws with a missing db fails fast", async () => {

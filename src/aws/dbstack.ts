@@ -76,14 +76,3 @@ export async function setMasterIpRule(ec2: Ec2, sgId: string, ip: string): Promi
     if (e?.name !== "InvalidPermission.Duplicate") throw e;
   }
 }
-
-export async function allowAppSg(ec2: Ec2, sgId: string, appSgId: string, appName: string): Promise<void> {
-  try {
-    await ec2.send(new AuthorizeSecurityGroupIngressCommand({
-      GroupId: sgId,
-      IpPermissions: [{ IpProtocol: "tcp", FromPort: 5432, ToPort: 5432, UserIdGroupPairs: [{ GroupId: appSgId, Description: `keel:app:${appName}` }] }],
-    }));
-  } catch (e: any) {
-    if (e?.name !== "InvalidPermission.Duplicate") throw e;
-  }
-}

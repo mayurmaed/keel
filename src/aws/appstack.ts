@@ -11,6 +11,7 @@ export async function ensureAppStack(
   app: AppRecord,
   ingress: IngressInfo,
   albPort: number,
+  dbSgId?: string,
 ): Promise<{ url: string; taskSgId: string }> {
   if (!gcfg.controlPlane) throw new Error("run `keel setup` first");
   const template = readFileSync(new URL("../../infra/app.yaml", import.meta.url), "utf8");
@@ -31,6 +32,7 @@ export async function ensureAppStack(
     BaseDomain: gcfg.baseDomain ?? "",
     HttpsListenerArn: ingress.httpsListenerArn ?? "",
     HostedZoneId: gcfg.hostedZoneId ?? "",
+    DbSgId: dbSgId ?? "",
   };
   const out = await deployStack(clients.cfn, `keel-app-${app.name}`, template, params);
   return { url: out.Url, taskSgId: out.TaskSgId };

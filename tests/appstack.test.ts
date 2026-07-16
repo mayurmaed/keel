@@ -38,8 +38,17 @@ describe("ensureAppStack — port mode", () => {
     expect(params.Subnets).toBe("s-1,s-2");
     expect(params.AlbSgId).toBe("sg-alb");
     expect(params.TaskSgId).toBeUndefined();
+    expect(params.DbSgId).toBe("");
     expect(params.ContainerPort).toBe("3000");
     expect(params.HealthPath).toBe("/health");
+  });
+
+  it("passes the linked database security group to the stack", async () => {
+    const { seenParams, clients } = fakeClients({ Url: "http://keel-alb-1.elb.amazonaws.com:8001", TaskSgId: "sg-app" });
+    await ensureAppStack(clients, gcfg, app, ingress, 8001, "sg-db");
+
+    const params = Object.fromEntries(seenParams[0].map((p: any) => [p.ParameterKey, p.ParameterValue]));
+    expect(params.DbSgId).toBe("sg-db");
   });
 });
 
@@ -70,6 +79,6 @@ describe("ensureAppStack — domain mode", () => {
 describe("app template", () => {
   const tpl = readFileSync("infra/app.yaml", "utf8");
   it("declares target group, fargate service, and host-header routing", () => {
-    for (const k of ["TargetGroup", "AWS::ECS::Service", "host-header", "TargetType", "AWS::EC2::SecurityGroup"]) expect(tpl).toContain(k);
+    for (const k of ["TargetGroup", "AWS::ECS::Service", "host-header", "TargetType", "AWS::EC2::SecurityGroup", "AWS::EC2::SecurityGroupIngress", "HasDb"]) expect(tpl).toContain(k);
   });
 });

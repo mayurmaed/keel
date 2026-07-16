@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { ensureDbInstance, getMyIp, setMasterIpRule, allowAppSg } from "../src/aws/dbstack";
+import { ensureDbInstance, getMyIp, setMasterIpRule } from "../src/aws/dbstack";
 
 function fakeClients(outputs: Record<string, string>) {
   const calls: string[] = [];
@@ -148,25 +148,6 @@ describe("setMasterIpRule", () => {
   });
 });
 
-describe("allowAppSg", () => {
-  it("authorizes the app SG pair", async () => {
-    const calls: { cmd: string; input: any }[] = [];
-    const ec2 = { send: async (c: any) => { calls.push({ cmd: c.constructor.name, input: c.input }); return {}; } };
-    await allowAppSg(ec2, "sg-db", "sg-app", "myapp");
-    const authorize = calls.find((c) => c.cmd === "AuthorizeSecurityGroupIngressCommand");
-    expect(authorize?.input.IpPermissions[0].UserIdGroupPairs[0]).toEqual({ GroupId: "sg-app", Description: "keel:app:myapp" });
-  });
-
-  it("swallows InvalidPermission.Duplicate", async () => {
-    const ec2 = { send: async () => { throw Object.assign(new Error("dup"), { name: "InvalidPermission.Duplicate" }); } };
-    await expect(allowAppSg(ec2, "sg-db", "sg-app", "myapp")).resolves.toBeUndefined();
-  });
-
-  it("rethrows other errors", async () => {
-    const ec2 = { send: async () => { throw Object.assign(new Error("boom"), { name: "SomethingElse" }); } };
-    await expect(allowAppSg(ec2, "sg-db", "sg-app", "myapp")).rejects.toThrow(/boom/);
-  });
-});
 
 describe("db template", () => {
   const tpl = readFileSync("infra/db.yaml", "utf8");
