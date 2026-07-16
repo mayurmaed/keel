@@ -57,14 +57,14 @@ These are also mirrored in the owner's decision log (`~/.claude/decisions/keel.m
    and Keel has no auth until Phase 3 anyway, so it can't replace a Supabase-with-RLS
    backend yet. RoleBolt stays on managed Supabase.
 
-## Open strategic question
+## Positioning (resolved)
 
-**Is Keel external product hosting engine, a standalone product, or both?**
-This shapes Phase 3 priorities more than anything else — "engine" pushes programmatic
-multi-tenant provisioning APIs; "standalone" pushes single-team CLI/dashboard DX.
-Recommendation: **both, engine-first** — external product becomes the dogfood and first customer,
-providing the production proof the OSS launch needs. Tracked as the *Phase 3* milestone
-issue "Decide: is Keel external product hosting engine…".
+**Keel is a standalone product** (D-3, reaffirmed D-5, 2026-07-14). It may be *used by*
+other applications, but it is not built as any app's hosting engine, and no other
+project's needs drive its roadmap. Phase 3 therefore targets single-team CLI/DX
+(auth for your own apps), not programmatic multi-tenant provisioning. Any evaluation
+of hosting a specific external app on Keel is done in that app's own repository against
+a copy — never coupled into this repo.
 
 ## How to resume
 
