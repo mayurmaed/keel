@@ -8,11 +8,14 @@ babysit, no per-seat SaaS bill, just your AWS usage.
 This guide covers the architecture, the deploy flows, and exactly how to use
 and test each piece.
 
-> **Status:** Plan B1 (control plane + build/deploy pipeline) and Plan B2 (AWS
-> runtime) are complete and live-verified end-to-end. `keel deploy` builds an
-> app and serves it at a real URL behind a shared load balancer; `keel logs`,
-> `keel status`, `keel destroy`, env vars, and push-to-redeploy all work against
-> AWS. Ingress mode (port vs. subdomain-HTTPS) is chosen at `keel setup`.
+> **Status:** Plan B1/B2 (deploy + AWS runtime) and Phase 2 (managed Postgres)
+> are complete and live-verified end-to-end. `keel deploy` builds an app and
+> serves it at a real URL behind a shared load balancer; `keel logs`, `status`,
+> `destroy`, env vars, and push-to-redeploy all work. `keel db create` provisions
+> RDS Postgres (shared or dedicated), and linking a database to an app injects
+> `DATABASE_URL` and opens a per-app firewall to it — verified with an app on
+> Fargate querying Postgres and serving `db ok`. Ingress mode (port vs.
+> subdomain-HTTPS) is chosen at `keel setup`. Next: Phase 3 (auth).
 
 ---
 
