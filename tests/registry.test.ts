@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   putApp, getApp, listApps, listDeploys, ensureWebhookSecret, setEnvVar, listEnvVars, newDeployId,
   putDb, getDb, listDbs,
+  putAuth, getAuth, listAuths, deleteAuthRecord,
   type AppRecord,
   type DbRecord,
+  type AuthRecord,
 } from "../src/aws/registry";
 
 function fake(answers: (cmd: string, input: any) => unknown) {
@@ -137,5 +139,40 @@ describe("registry", () => {
     await listApps(deps);
     expect(calls[0].input.FilterExpression).toMatch(/begins_with\(PK, :app\)/);
     expect(calls[0].input.ExpressionAttributeValues).toHaveProperty(":app", "APP#");
+  });
+});
+
+const auth: AuthRecord = {
+  name: "appauth", db: "appdb", project: "appauth", host: "alb.example", port: 8100,
+  stack: "keel-auth-appauth", taskSgId: "sg-auth", url: "http://alb.example:8100", createdAt: "t",
+};
+
+describe("auth registry", () => {
+  it("putAuth writes PK=AUTH#name SK=META", async () => {
+    const { calls, deps } = fake(() => ({}));
+    await putAuth(deps, auth);
+    expect(calls[0].cmd).toBe("PutCommand");
+    expect(calls[0].input.Item).toMatchObject({ PK: "AUTH#appauth", SK: "META", db: "appdb", url: "http://alb.example:8100" });
+  });
+
+  it("getAuth returns undefined for missing", async () => {
+    const { deps } = fake(() => ({}));
+    expect(await getAuth(deps, "nope")).toBeUndefined();
+  });
+
+  it("listAuths scans with the AUTH# prefix filter", async () => {
+    const { calls, deps } = fake((cmd) =>
+      cmd === "ScanCommand" ? { Items: [{ PK: "AUTH#appauth", SK: "META", ...auth }] } : {},
+    );
+    const list = await listAuths(deps);
+    expect(calls[0].input.FilterExpression).toMatch(/begins_with\(PK, :a\)/);
+    expect(list[0].name).toBe("appauth");
+  });
+
+  it("deleteAuthRecord deletes the META item", async () => {
+    const { calls, deps } = fake(() => ({}));
+    await deleteAuthRecord(deps, "appauth");
+    expect(calls[0].cmd).toBe("DeleteCommand");
+    expect(calls[0].input.Key).toEqual({ PK: "AUTH#appauth", SK: "META" });
   });
 });
