@@ -116,6 +116,8 @@ Resources:
               Value: "false"
             - Name: GOTRUE_SITE_URL
               Value: !If [IsPort, !Sub "http://${AlbDns}:${AlbPort}", !Sub "https://auth-${AuthName}.${BaseDomain}"]
+            - Name: GOTRUE_API_EXTERNAL_URL
+              Value: !If [IsPort, !Sub "http://${AlbDns}:${AlbPort}", !Sub "https://auth-${AuthName}.${BaseDomain}"]
           Secrets:
             - Name: GOTRUE_JWT_SECRET
               ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${JwtSecretParam}"
