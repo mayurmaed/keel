@@ -3,7 +3,12 @@ import { DeleteStackCommand, waitUntilStackDeleteComplete, CloudFormationClient 
 import { awsDeps, type AwsIo } from "../targets/aws.js";
 import { ensureIngress } from "../aws/ingress.js";
 import { ensureJwtSecret, ensureAuthStack } from "../aws/authstack.js";
+import { randomBytes } from "node:crypto";
+import { ensureAuthRole, realPg, type PgFactory } from "../aws/pgadmin.js";
+import { getMyIp, setMasterIpRule } from "../aws/dbstack.js";
 import { getDb, getAuth, listAuths, putAuth, deleteAuthRecord, AUTH_NAME_RE } from "../aws/registry.js";
+
+export type AuthIo = AwsIo & { pg?: PgFactory; fetchImpl?: typeof fetch };
 
 // auth ALB ports start at 8100 (apps use 8001-8099-ish); priority = albPort - 8000.
 function nextAuthPort(used: number[]): number {
@@ -14,7 +19,7 @@ function nextAuthPort(used: number[]): number {
 export async function authCreate(
   name: string,
   opts: { db?: string; project?: string } = {},
-  io: AwsIo = {},
+  io: AuthIo = {},
 ): Promise<void> {
   if (!AUTH_NAME_RE.test(name)) throw new Error(`invalid auth name "${name}" — lowercase letters, digits, dashes, 2-32 chars`);
   if (!opts.db) throw new Error("auth needs a database — pass --db <name> (create one with `keel db create <name>`)");
@@ -23,6 +28,21 @@ export async function authCreate(
   const db = await getDb(reg, opts.db);
   if (!db) throw new Error(`database "${opts.db}" not found — create it with \`keel db create ${opts.db}\``);
 
+  // Give GoTrue its OWN db role that owns the `auth` schema and has search_path=auth at the role
+  // level (the only driver-independent way — see ensureAuthRole). Run as the db master (CREATEROLE).
+  // Allow this machine's IP on the db first (same refresh `db create` does) so the connect succeeds.
+  await setMasterIpRule(clients.ec2, db.dbSgId, await getMyIp(io.fetchImpl ?? fetch));
+  const adminUrl = db.isolation === "shared"
+    ? `postgres://keeladmin:${(await clients.ssm.send(new GetParameterCommand({ Name: "/keel/db-shared/master", WithDecryption: true }))).Parameter!.Value}@${db.host}:5432/${db.dbName}?sslmode=require`
+    : (await clients.ssm.send(new GetParameterCommand({ Name: `/keel/db/${opts.db}/url`, WithDecryption: true }))).Parameter!.Value as string;
+  const gotrueRole = `keelauth_${name.replace(/-/g, "_")}`;
+  const gotruePw = randomBytes(24).toString("hex");
+  await ensureAuthRole(io.pg ?? realPg, adminUrl, gotrueRole, gotruePw);
+
+  const gotrueDbUrlParam = `/keel/auth/${name}/db-url`;
+  const gotrueDbUrl = `postgres://${gotrueRole}:${gotruePw}@${db.host}:5432/${db.dbName}?sslmode=require`;
+  await clients.ssm.send(new PutParameterCommand({ Name: gotrueDbUrlParam, Value: gotrueDbUrl, Type: "SecureString", Overwrite: true }));
+
   const auths = await listAuths(reg);
   const albPort = nextAuthPort(auths.map((a) => a.port).filter((p): p is number => typeof p === "number"));
   const ingress = await ensureIngress(clients, gcfg);
@@ -30,7 +50,7 @@ export async function authCreate(
   await ensureJwtSecret(clients.ssm, name); // ensure it exists before the stack references it
   const { url, taskSgId } = await ensureAuthStack(
     clients, gcfg, { name, project: opts.project ?? name }, ingress, albPort,
-    db.dbSgId, `/keel/db/${opts.db}/url`, jwtSecretParam,
+    db.dbSgId, gotrueDbUrlParam, jwtSecretParam,
   );
   await putAuth(reg, {
     name, db: opts.db, project: opts.project ?? name,
@@ -65,6 +85,7 @@ export async function authDestroy(name: string, io: AwsIo = {}): Promise<void> {
   // waiter: delete faster than create; the app stack pattern uses the same cast.
   await waitUntilStackDeleteComplete({ client: clients.cfn as CloudFormationClient, maxWaitTime: 900 }, { StackName: stackName });
   await clients.ssm.send(new DeleteParameterCommand({ Name: `/keel/auth/${name}/jwt-secret` })).catch(() => {});
+  await clients.ssm.send(new DeleteParameterCommand({ Name: `/keel/auth/${name}/db-url` })).catch(() => {});
   await deleteAuthRecord(reg, name);
   console.log(`destroyed auth ${name} (database and its auth schema left intact)`);
 }

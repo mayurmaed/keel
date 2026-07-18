@@ -118,6 +118,10 @@ Resources:
               Value: !If [IsPort, !Sub "http://${AlbDns}:${AlbPort}", !Sub "https://auth-${AuthName}.${BaseDomain}"]
             - Name: GOTRUE_API_EXTERNAL_URL
               Value: !If [IsPort, !Sub "http://${AlbDns}:${AlbPort}", !Sub "https://auth-${AuthName}.${BaseDomain}"]
+            # GoTrue v2.x reads the auth external URL from the UNPREFIXED key (see supabase's official docker-compose);
+            # GOTRUE_API_EXTERNAL_URL above is ignored by this version. Set both to cover version drift.
+            - Name: API_EXTERNAL_URL
+              Value: !If [IsPort, !Sub "http://${AlbDns}:${AlbPort}", !Sub "https://auth-${AuthName}.${BaseDomain}"]
           Secrets:
             - Name: GOTRUE_JWT_SECRET
               ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${JwtSecretParam}"
