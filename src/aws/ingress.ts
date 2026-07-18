@@ -7,7 +7,6 @@ export interface IngressInfo {
   albDns: string;
   albArn: string;
   albSgId: string;
-  taskSgId: string;
   httpsListenerArn?: string;
 }
 
@@ -28,7 +27,6 @@ export async function ensureIngress(clients: Pick<AwsClients, "cfn">, gcfg: Glob
     albDns: out.AlbDns,
     albArn: out.AlbArn,
     albSgId: out.AlbSgId,
-    taskSgId: out.TaskSgId,
     ...(out.HttpsListenerArn ? { httpsListenerArn: out.HttpsListenerArn } : {}),
   };
 }

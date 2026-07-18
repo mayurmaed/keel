@@ -6,6 +6,7 @@ import { registerAwsApp, deployAws, statusAws, envAws, logsAws, destroyAws } fro
 import { newCommand } from "./commands/new.js";
 import { envCommand } from "./commands/env.js";
 import { setupCommand } from "./commands/setup.js";
+import { dbCreate, dbList, dbUrl, dbAllowIp, dbDestroy } from "./commands/db.js";
 
 async function printLocalApps(): Promise<void> {
   const lines = await listLocal();
@@ -25,6 +26,8 @@ export function buildProgram(): Command {
     .option("--target <target>", '"local" or "aws"')
     .option("--repo <url>")
     .option("--branch <branch>")
+    .option("--db <name>", "link a keel database (DATABASE_URL injected on deploy)")
+    .option("--project <project>")
     .action(async (opts) => {
       await newCommand(opts);
       const cfg = loadAppConfig(process.cwd());
@@ -122,6 +125,25 @@ export function buildProgram(): Command {
     .option("--profile <profile>", "AWS CLI profile to use (remembered for all keel commands)")
     .option("--yes", "non-interactive: accept defaults")
     .action((opts) => setupCommand(opts));
+
+  const db = program.command("db").description("managed postgres (rds) databases");
+  db.command("create <name>")
+    .option("--isolation <mode>", '"shared" (default) or "dedicated"', "shared")
+    .option("--project <project>")
+    .option("--backup-days <days>", "RDS backup retention (free-plan AWS accounts cap this at 1)", "7")
+    .action((name: string, opts: { isolation: string; project?: string; backupDays?: string }) => dbCreate(name, opts));
+  db.command("list").action(() => dbList());
+  db.command("url <name>").action((name: string) => dbUrl(name));
+  db.command("allow-ip [ip]").option("--db <name>")
+    .action((ip: string | undefined, opts: { db?: string }) => dbAllowIp({ ip, db: opts.db }));
+  db.command("destroy <name>").option("--yes", "skip confirmation")
+    .action(async (name: string, opts: { yes?: boolean }) => {
+      if (!opts.yes) {
+        const ok = await confirm({ message: `Destroy database "${name}"? Data is deleted. This cannot be undone.`, default: false });
+        if (!ok) { console.log("aborted"); return; }
+      }
+      await dbDestroy(name);
+    });
 
   return program;
 }

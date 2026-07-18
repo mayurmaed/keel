@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  putApp, getApp, listDeploys, ensureWebhookSecret, setEnvVar, listEnvVars, newDeployId,
+  putApp, getApp, listApps, listDeploys, ensureWebhookSecret, setEnvVar, listEnvVars, newDeployId,
+  putDb, getDb, listDbs,
   type AppRecord,
+  type DbRecord,
 } from "../src/aws/registry";
 
 function fake(answers: (cmd: string, input: any) => unknown) {
@@ -89,5 +91,51 @@ describe("registry", () => {
 
   it("newDeployId matches the Lambda's format", () => {
     expect(newDeployId()).toMatch(/^\d{8}T\d{6}Z$/);
+  });
+
+  it("putDb writes PK=DB#name SK=META with fields", async () => {
+    const { calls, deps } = fake(() => ({}));
+    const db: DbRecord = {
+      name: "api",
+      project: "p1",
+      isolation: "dedicated",
+      access: "public",
+      engine: "postgres",
+      host: "localhost",
+      port: 5432,
+      dbName: "api_db",
+      dbUser: "api_user",
+      stack: "prod",
+      dbSgId: "sg-123",
+      createdAt: "2026-07-08T00:00:00Z",
+    };
+    await putDb(deps, db);
+    expect(calls[0].cmd).toBe("PutCommand");
+    expect(calls[0].input.Item).toMatchObject({ PK: "DB#api", SK: "META", dbName: "api_db", engine: "postgres" });
+  });
+
+  it("getDb returns undefined for missing databases", async () => {
+    const { deps } = fake(() => ({}));
+    const result = await getDb(deps, "nope");
+    expect(result).toBeUndefined();
+  });
+
+  it("listDbs scans with DB# prefix filter", async () => {
+    const { calls, deps } = fake((cmd) =>
+      cmd === "ScanCommand" ? { Items: [{ PK: "DB#api", SK: "META", name: "api", engine: "postgres" }] } : {},
+    );
+    const dbs = await listDbs(deps);
+    expect(calls[0].input.FilterExpression).toMatch(/begins_with\(PK, :db\)/);
+    expect(calls[0].input.ExpressionAttributeValues).toHaveProperty(":db", "DB#");
+    expect(dbs[0].name).toBe("api");
+  });
+
+  it("listApps scan input now includes begins_with(PK, :app)", async () => {
+    const { calls, deps } = fake((cmd) =>
+      cmd === "ScanCommand" ? { Items: [{ PK: "APP#web", SK: "META", name: "web", port: 3000 }] } : {},
+    );
+    await listApps(deps);
+    expect(calls[0].input.FilterExpression).toMatch(/begins_with\(PK, :app\)/);
+    expect(calls[0].input.ExpressionAttributeValues).toHaveProperty(":app", "APP#");
   });
 });

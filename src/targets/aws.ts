@@ -1,7 +1,7 @@
 import { StartBuildCommand } from "@aws-sdk/client-codebuild";
 import { FilterLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
 import { CloudFormationClient, DeleteStackCommand, waitUntilStackDeleteComplete } from "@aws-sdk/client-cloudformation";
-import { DeleteParameterCommand, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
+import { DeleteParameterCommand, GetParameterCommand, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 import { DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { AppConfig } from "../config.js";
 import { makeClients, type AwsClients } from "../aws/clients.js";
@@ -9,8 +9,8 @@ import { readGlobalConfig, type GlobalConfig } from "../aws/globalconfig.js";
 import { ensureIngress } from "../aws/ingress.js";
 import { ensureAppStack } from "../aws/appstack.js";
 import {
-  ensureWebhookSecret, getApp, getDeploy, listApps, listDeploys, listEnvVars, newDeployId,
-  putApp, putDeploy, setEnvVar, unsetEnvVar, type RegistryDeps,
+  ensureWebhookSecret, getApp, getDb, getDeploy, listApps, listDeploys, listEnvVars, newDeployId,
+  putApp, putDeploy, setEnvVar, unsetEnvVar, type DbRecord, type RegistryDeps,
 } from "../aws/registry.js";
 
 export interface AwsIo {
@@ -41,6 +41,7 @@ export async function registerAwsApp(cfg: AppConfig, io: AwsIo = {}): Promise<vo
     name: cfg.name, repo: cfg.repo, branch: cfg.branch, port: cfg.port,
     ...(cfg.dir ? { dir: cfg.dir } : {}), cpu: 256, memory: 512,
     healthPath: cfg.healthPath, createdAt: new Date().toISOString(), albPort,
+    ...(cfg.db ? { db: cfg.db } : {}), ...(cfg.project ? { project: cfg.project } : {}),
   });
   const secret = await ensureWebhookSecret(reg, cfg.name);
   const hookUrl = `${cp.webhookBase}/${cfg.name}`;
@@ -72,6 +73,13 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
     app = (await getApp(reg, cfg.name))!;
   }
   const ingress = await ensureIngress(clients, gcfg);
+  let dbRec: DbRecord | undefined;
+  if (cfg.db) {
+    dbRec = await getDb(reg, cfg.db);
+    if (!dbRec) throw new Error(`database "${cfg.db}" not found — create it with \`keel db create ${cfg.db}\``);
+    const urlRes = await clients.ssm.send(new GetParameterCommand({ Name: `/keel/db/${cfg.db}/url`, WithDecryption: true }));
+    await setEnvVar(reg, cfg.name, "DATABASE_URL", urlRes.Parameter!.Value as string);
+  }
   const id = newDeployId();
   await putDeploy(reg, { app: app.name, id, status: "queued", updatedAt: new Date().toISOString() });
   const started = await clients.codebuild.send(new StartBuildCommand({
@@ -92,8 +100,8 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
       last = status;
     }
     if (status === "live") {
-      const url = await ensureAppStack(clients, gcfg, app, ingress, app.albPort ?? 8001);
-      console.log(`live: ${url}`);
+      const appStack = await ensureAppStack(clients, gcfg, app, ingress, app.albPort ?? 8001, dbRec?.dbSgId);
+      console.log(`live: ${appStack.url}`);
       return;
     }
     if (status === "failed") {

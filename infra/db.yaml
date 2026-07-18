@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: keel rds instance - single postgres instance, shared or per-app
+
+Parameters:
+  InstanceId:
+    Type: String
+  MasterPassword:
+    Type: String
+    NoEcho: true
+  BackupDays:
+    Type: String
+    Default: "7"
+    Description: RDS backup retention in days (free-plan AWS accounts cap this at 1)
+  VpcId:
+    Type: String
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  DbName:
+    Type: String
+    Default: ""
+
+Conditions:
+  HasDbName: !Not [!Equals [!Ref DbName, ""]]
+
+Resources:
+  SubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "keel db ${InstanceId}"
+      SubnetIds: !Ref Subnets
+
+  DbSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "keel db ${InstanceId} - rules managed by the keel CLI"
+      VpcId: !Ref VpcId
+
+  Instance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Ref InstanceId
+      Engine: postgres
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: "20"
+      StorageType: gp3
+      MasterUsername: keeladmin
+      MasterUserPassword: !Ref MasterPassword
+      PubliclyAccessible: true
+      StorageEncrypted: true
+      BackupRetentionPeriod: !Ref BackupDays
+      DBSubnetGroupName: !Ref SubnetGroup
+      VPCSecurityGroups: [!GetAtt DbSg.GroupId]
+      DBName: !If [HasDbName, !Ref DbName, !Ref "AWS::NoValue"]
+
+Outputs:
+  Endpoint: { Value: !GetAtt Instance.Endpoint.Address }
+  DbSgId: { Value: !GetAtt DbSg.GroupId }

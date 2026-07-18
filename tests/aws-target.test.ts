@@ -24,9 +24,25 @@ function fakeIo(deployStatuses: string[]) {
   const send = async (c: any) => {
     const cmd = c.constructor.name;
     calls.push({ cmd, input: c.input });
-    if (cmd === "GetParameterCommand") return { Parameter: { Value: "secret" } };
+    if (cmd === "GetParameterCommand") {
+      if (c.input.Name === "/keel/db/api/url") return { Parameter: { Value: "postgres://api:pw@db.example:5432/api" } };
+      return { Parameter: { Value: "secret" } };
+    }
     if (cmd === "ScanCommand") return { Items: [] };
     if (cmd === "GetCommand") {
+      const pk = String(c.input.Key.PK);
+      if (pk.startsWith("DB#")) {
+        if (pk === "DB#api") {
+          return {
+            Item: {
+              PK: "DB#api", SK: "META", name: "api", project: "api", isolation: "shared",
+              access: "public", engine: "postgres", host: "db.example", port: 5432,
+              dbName: "api", dbUser: "api", stack: "keel-db-shared", dbSgId: "sg-db", createdAt: "t",
+            },
+          };
+        }
+        return {};
+      }
       if (String(c.input.Key.SK) === "META") {
         return { Item: { PK: "APP#web", SK: "META", name: "web", repo: cfg.repo, branch: "main", port: 3000, cpu: 256, memory: 512, healthPath: "/", createdAt: "t" } };
       }
@@ -42,14 +58,14 @@ function fakeIo(deployStatuses: string[]) {
       const name = c.input.StackName as string;
       if (!createdStacks.has(name)) throw Object.assign(new Error("does not exist"), { name: "ValidationError" });
       const outputs = name === "keel-ingress"
-        ? { AlbDns: "alb.example", AlbArn: "arn:alb", AlbSgId: "sg-alb", TaskSgId: "sg-task" }
-        : { Url: "http://alb.example:8001" };
+        ? { AlbDns: "alb.example", AlbArn: "arn:alb", AlbSgId: "sg-alb" }
+        : { Url: "http://alb.example:8001", TaskSgId: "sg-app" };
       return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: Object.entries(outputs).map(([k, v]) => ({ OutputKey: k, OutputValue: v })) }] };
     }
     if (cmd === "FilterLogEventsCommand") return { events: [{ timestamp: 1720000000000, message: "listening on 3000\n" }] };
     return {};
   };
-  const clients = { ddb: { send }, ssm: { send }, codebuild: { send }, cfn: { send }, logs: { send } } as any;
+  const clients = { ddb: { send }, ssm: { send }, codebuild: { send }, cfn: { send }, logs: { send }, ec2: { send } } as any;
   return { calls, io: { gcfg, clients, sleep: async () => {} } };
 }
 
@@ -77,7 +93,10 @@ describe("deployAws", () => {
     const startBuildIdx = calls.findIndex((c) => c.cmd === "StartBuildCommand");
     expect(ingressCreateIdx).toBeGreaterThanOrEqual(0);
     expect(ingressCreateIdx).toBeLessThan(startBuildIdx);
-    expect(calls.some((c) => c.cmd === "CreateStackCommand" && String(c.input.StackName).startsWith("keel-app-"))).toBe(true);
+    const appStack = calls.find((c) => c.cmd === "CreateStackCommand" && String(c.input.StackName).startsWith("keel-app-"));
+    expect(appStack).toBeDefined();
+    const appParams = Object.fromEntries(appStack!.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));
+    expect(appParams.DbSgId).toBe("");
     expect(logs.some((l) => l.includes("http://alb.example:8001"))).toBe(true);
   });
 
@@ -89,6 +108,34 @@ describe("deployAws", () => {
   it("times out after a bounded number of polls instead of hanging on a status that never resolves", async () => {
     const { io } = fakeIo(["building"]); // never reaches live or failed
     await expect(deployAws(cfg, io)).rejects.toThrow(/timed out/i);
+  });
+
+  it("deployAws with a linked db injects DATABASE_URL before the build and grants via the app stack", async () => {
+    const { calls, io } = fakeIo(["queued", "building", "live"]);
+    const dbCfg = { ...cfg, db: "api" };
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      await deployAws(dbCfg, io);
+    } finally {
+      console.log = orig;
+    }
+    const putUrlIdx = calls.findIndex((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/web/env/DATABASE_URL");
+    const startBuildIdx = calls.findIndex((c) => c.cmd === "StartBuildCommand");
+    expect(putUrlIdx).toBeGreaterThanOrEqual(0);
+    expect(putUrlIdx).toBeLessThan(startBuildIdx);
+
+    const appStack = calls.find((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-app-web");
+    const appParams = Object.fromEntries(appStack!.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));
+    expect(appParams.DbSgId).toBe("sg-db");
+    expect(calls.some((c) => c.cmd === "AuthorizeSecurityGroupIngressCommand")).toBe(false);
+  });
+
+  it("deployAws with a missing db fails fast", async () => {
+    const { calls, io } = fakeIo(["queued", "building", "live"]);
+    const dbCfg = { ...cfg, db: "missing" };
+    await expect(deployAws(dbCfg, io)).rejects.toThrow(/keel db create missing/);
+    expect(calls.some((c) => c.cmd === "StartBuildCommand")).toBe(false);
   });
 });
 

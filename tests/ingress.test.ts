@@ -24,11 +24,10 @@ const gcfg = { region: "ap-south-1", ingress: "port", controlPlane: { vpcId: "vp
 
 describe("ensureIngress", () => {
   it("creates the ingress stack and returns outputs", async () => {
-    const { calls, clients } = fakeClients({ AlbDns: "keel-alb-123.elb.amazonaws.com", AlbArn: "arn:alb", AlbSgId: "sg-alb", TaskSgId: "sg-task" });
+    const { calls, clients } = fakeClients({ AlbDns: "keel-alb-123.elb.amazonaws.com", AlbArn: "arn:alb", AlbSgId: "sg-alb" });
     const info = await ensureIngress(clients, gcfg);
     expect(calls).toContain("CreateStackCommand");
     expect(info.albDns).toBe("keel-alb-123.elb.amazonaws.com");
-    expect(info.taskSgId).toBe("sg-task");
   });
 
   it("passes Mode=port and the subnets as parameters", async () => {
@@ -37,7 +36,7 @@ describe("ensureIngress", () => {
       if (c.constructor.name === "CreateStackCommand") seen.push(c.input.Parameters);
       if (c.constructor.name === "DescribeStacksCommand") {
         if (!seen.length) throw Object.assign(new Error("no"), { name: "ValidationError" });
-        return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: [{ OutputKey: "AlbDns", OutputValue: "d" }, { OutputKey: "AlbArn", OutputValue: "a" }, { OutputKey: "AlbSgId", OutputValue: "s" }, { OutputKey: "TaskSgId", OutputValue: "t" }] }] };
+        return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: [{ OutputKey: "AlbDns", OutputValue: "d" }, { OutputKey: "AlbArn", OutputValue: "a" }, { OutputKey: "AlbSgId", OutputValue: "s" }] }] };
       }
       return {};
     } } } as any;
@@ -51,6 +50,9 @@ describe("ensureIngress", () => {
 describe("ingress template", () => {
   const tpl = readFileSync("infra/ingress.yaml", "utf8");
   it("declares mode-conditional ALB, SGs, and outputs", () => {
-    for (const k of ["Mode", "keel-alb", "AlbDns", "TaskSgId", "AlbSgId"]) expect(tpl).toContain(k);
+    for (const k of ["Mode", "keel-alb", "AlbDns", "AlbSgId"]) expect(tpl).toContain(k);
+  });
+  it("does not declare a shared task security group", () => {
+    expect(tpl).not.toContain("TaskSg:");
   });
 });

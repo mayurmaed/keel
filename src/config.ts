@@ -4,6 +4,7 @@ import { join } from "node:path";
 export const CONFIG_FILE = "keel.json";
 const NAME_RE = /^[a-z][a-z0-9-]{1,31}$/;
 const REPO_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+?(?:\.git)?$/;
+export const DB_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/;
 
 export interface AppConfig {
   name: string;
@@ -14,6 +15,8 @@ export interface AppConfig {
   healthPath: string;
   repo?: string;
   dir?: string;
+  db?: string;
+  project?: string;
 }
 
 export function validateAppConfig(c: unknown): string[] {
@@ -37,6 +40,8 @@ export function validateAppConfig(c: unknown): string[] {
     cfg?.dir !== undefined &&
     (typeof cfg.dir !== "string" || cfg.dir.startsWith("/") || cfg.dir.includes(".."))
   ) errs.push("dir must be a relative path inside the repo");
+  if (cfg?.db !== undefined && (typeof cfg.db !== "string" || !DB_NAME_RE.test(cfg.db))) errs.push("db must be a lowercase postgres-safe name (letters, digits, underscores)");
+  if (cfg?.project !== undefined && typeof cfg.project !== "string") errs.push("project must be a string");
   return errs;
 }
 
