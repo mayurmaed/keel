@@ -29,6 +29,7 @@ export async function newCommand(
     ...(repo ? { repo } : {}),
     ...(opts.db ? { db: opts.db } : {}),
     ...(opts.project ? { project: opts.project } : {}),
+    ...(opts.auth ? { auth: opts.auth } : {}),
   };
   const errs = validateAppConfig(cfg);
   if (errs.length) throw new Error(errs.join("; "));

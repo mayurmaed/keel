@@ -5,6 +5,7 @@ export const CONFIG_FILE = "keel.json";
 const NAME_RE = /^[a-z][a-z0-9-]{1,31}$/;
 const REPO_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+?(?:\.git)?$/;
 export const DB_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/;
+export const AUTH_NAME_RE = /^[a-z][a-z0-9-]{1,31}$/;
 
 export interface AppConfig {
   name: string;
@@ -16,6 +17,7 @@ export interface AppConfig {
   repo?: string;
   dir?: string;
   db?: string;
+  auth?: string;
   project?: string;
 }
 
@@ -42,6 +44,8 @@ export function validateAppConfig(c: unknown): string[] {
   ) errs.push("dir must be a relative path inside the repo");
   if (cfg?.db !== undefined && (typeof cfg.db !== "string" || !DB_NAME_RE.test(cfg.db))) errs.push("db must be a lowercase postgres-safe name (letters, digits, underscores)");
   if (cfg?.project !== undefined && typeof cfg.project !== "string") errs.push("project must be a string");
+  if (cfg?.auth !== undefined && (typeof cfg.auth !== "string" || !AUTH_NAME_RE.test(cfg.auth)))
+    errs.push("auth must be a lowercase name (letters, digits, dashes), 2-32 chars");
   return errs;
 }
 

@@ -3,9 +3,9 @@ import { DeleteCommand, GetCommand, PutCommand, QueryCommand, ScanCommand } from
 import {
   DeleteParameterCommand, GetParameterCommand, GetParametersByPathCommand, PutParameterCommand,
 } from "@aws-sdk/client-ssm";
-import { DB_NAME_RE } from "../config.js";
+import { AUTH_NAME_RE, DB_NAME_RE } from "../config.js";
 
-export { DB_NAME_RE };
+export { DB_NAME_RE, AUTH_NAME_RE };
 
 export interface RegistryDeps {
   ddb: { send(c: any): Promise<any> };
@@ -25,6 +25,7 @@ export interface AppRecord {
   createdAt: string;
   albPort?: number;
   db?: string;
+  auth?: string;
   project?: string;
 }
 
@@ -49,6 +50,18 @@ export interface DbRecord {
   dbUser: string;
   stack: string;
   dbSgId: string;
+  createdAt: string;
+}
+
+export interface AuthRecord {
+  name: string;
+  db: string;
+  project: string;
+  host: string;
+  port: number;
+  stack: string;
+  taskSgId: string;
+  url: string;
   createdAt: string;
 }
 
@@ -99,6 +112,31 @@ export async function listDbs(d: RegistryDeps): Promise<DbRecord[]> {
 
 export async function deleteDbRecord(d: RegistryDeps, name: string): Promise<void> {
   await d.ddb.send(new DeleteCommand({ TableName: d.table, Key: { PK: `DB#${name}`, SK: "META" } }));
+}
+
+export async function putAuth(d: RegistryDeps, a: AuthRecord): Promise<void> {
+  await d.ddb.send(new PutCommand({ TableName: d.table, Item: { PK: `AUTH#${a.name}`, SK: "META", ...a } }));
+}
+
+export async function getAuth(d: RegistryDeps, name: string): Promise<AuthRecord | undefined> {
+  const res = await d.ddb.send(new GetCommand({ TableName: d.table, Key: { PK: `AUTH#${name}`, SK: "META" } }));
+  if (!res.Item) return undefined;
+  const { PK, SK, ...rest } = res.Item;
+  return rest as AuthRecord;
+}
+
+export async function listAuths(d: RegistryDeps): Promise<AuthRecord[]> {
+  // ponytail: Scan is fine — the table holds tens of items, not millions
+  const res = await d.ddb.send(new ScanCommand({
+    TableName: d.table,
+    FilterExpression: "SK = :meta AND begins_with(PK, :a)",
+    ExpressionAttributeValues: { ":meta": "META", ":a": "AUTH#" },
+  }));
+  return (res.Items ?? []).map(({ PK, SK, ...rest }: any) => rest as AuthRecord);
+}
+
+export async function deleteAuthRecord(d: RegistryDeps, name: string): Promise<void> {
+  await d.ddb.send(new DeleteCommand({ TableName: d.table, Key: { PK: `AUTH#${name}`, SK: "META" } }));
 }
 
 export async function putDeploy(d: RegistryDeps, dep: DeployRecord): Promise<void> {

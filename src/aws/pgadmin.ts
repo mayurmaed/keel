@@ -45,6 +45,40 @@ export async function createLogicalDb(factory: PgFactory, adminUrl: string, name
   }
 }
 
+// GoTrue queries its tables unqualified and tracks migrations in an unqualified `schema_migrations`,
+// so its connection's search_path MUST be `auth`. pop (its ORM) drops URL `options`, so the only
+// driver-independent way to set it is a role-level default. A dedicated role also keeps GoTrue's
+// footprint to the auth schema it owns — the app keeps its own role, so a `public.users` can never
+// collide with `auth.users`. Runs as the db master (has CREATEROLE); idempotent for re-creates.
+export async function ensureAuthRole(
+  factory: PgFactory, adminUrl: string, role: string, password: string,
+): Promise<void> {
+  if (!DB_NAME_RE.test(role)) throw new Error(`invalid auth role "${role}" — lowercase letters, digits, underscores only`);
+  if (!HEX_RE.test(password)) throw new Error("gotrue role passwords must be hex-only (generated) — refusing to interpolate arbitrary strings into SQL");
+  const r = `"${role}"`;
+  const admin = ident(new URL(adminUrl).username);
+  const c = factory(adminUrl);
+  await c.connect();
+  try {
+    await c.query(
+      `DO $$ BEGIN
+         IF EXISTS (SELECT FROM pg_roles WHERE rolname = '${role}') THEN
+           ALTER ROLE ${r} LOGIN PASSWORD '${password}';
+         ELSE
+           CREATE ROLE ${r} LOGIN PASSWORD '${password}';
+         END IF;
+       END $$`,
+    );
+    await c.query(`GRANT ${r} TO ${admin}`);           // PG16 needs membership to assign ownership
+    await c.query(`CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION ${r}`);
+    await c.query(`ALTER SCHEMA auth OWNER TO ${r}`);  // idempotent: own it even if it pre-existed
+    await c.query(`GRANT USAGE ON SCHEMA public TO ${r}`);
+    await c.query(`ALTER ROLE ${r} SET search_path = auth, public`);
+  } finally {
+    await c.end();
+  }
+}
+
 export async function dropLogicalDb(factory: PgFactory, adminUrl: string, name: string): Promise<void> {
   const id = ident(name);
   const c = factory(adminUrl);

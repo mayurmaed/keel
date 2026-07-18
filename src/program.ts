@@ -7,6 +7,7 @@ import { newCommand } from "./commands/new.js";
 import { envCommand } from "./commands/env.js";
 import { setupCommand } from "./commands/setup.js";
 import { dbCreate, dbList, dbUrl, dbAllowIp, dbDestroy } from "./commands/db.js";
+import { authCreate, authList, authUrl, authDestroy } from "./commands/auth.js";
 
 async function printLocalApps(): Promise<void> {
   const lines = await listLocal();
@@ -27,6 +28,7 @@ export function buildProgram(): Command {
     .option("--repo <url>")
     .option("--branch <branch>")
     .option("--db <name>", "link a keel database (DATABASE_URL injected on deploy)")
+    .option("--auth <name>", "link a keel auth service (GOTRUE_URL + JWT_SECRET injected on deploy)")
     .option("--project <project>")
     .action(async (opts) => {
       await newCommand(opts);
@@ -143,6 +145,22 @@ export function buildProgram(): Command {
         if (!ok) { console.log("aborted"); return; }
       }
       await dbDestroy(name);
+    });
+
+  const auth = program.command("auth").description("managed authentication (GoTrue) services");
+  auth.command("create <name>")
+    .requiredOption("--db <db>", "the keel database to store users in")
+    .option("--project <project>")
+    .action((name: string, opts: { db: string; project?: string }) => authCreate(name, opts));
+  auth.command("list").action(() => authList());
+  auth.command("url <name>").action((name: string) => authUrl(name));
+  auth.command("destroy <name>").option("--yes", "skip confirmation")
+    .action(async (name: string, opts: { yes?: boolean }) => {
+      if (!opts.yes) {
+        const ok = await confirm({ message: `Destroy auth "${name}"? Users stay in the database, but the login service is removed.`, default: false });
+        if (!ok) { console.log("aborted"); return; }
+      }
+      await authDestroy(name);
     });
 
   return program;

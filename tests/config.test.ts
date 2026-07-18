@@ -44,6 +44,11 @@ describe("validateAppConfig", () => {
   it("accepts a relative dir", () => {
     expect(validateAppConfig({ name: "web", port: 80, target: "local", dir: "sample-app" })).toEqual([]);
   });
+
+  it("rejects a bad auth name and accepts a valid one", () => {
+    expect(validateAppConfig({ name: "web", port: 80, target: "local", auth: "My_Auth" })).toHaveLength(1);
+    expect(validateAppConfig({ name: "web", port: 80, target: "local", auth: "app-auth" })).toEqual([]);
+  });
 });
 
 describe("load/save", () => {
