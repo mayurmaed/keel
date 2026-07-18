@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, phase2-database]
+    branches: [main, staging]
 
 jobs:
   test:
