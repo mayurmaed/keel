@@ -106,6 +106,8 @@ Resources:
               Value: "3600"
             - Name: GOTRUE_JWT_AUD
               Value: authenticated
+            - Name: GOTRUE_JWT_DEFAULT_GROUP_NAME
+              Value: authenticated
             - Name: GOTRUE_MAILER_AUTOCONFIRM
               Value: "true"
             - Name: GOTRUE_DISABLE_SIGNUP
