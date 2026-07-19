@@ -1,6 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { deployStack } from "../src/aws/stack";
+
+const { waitUntilStackCreateComplete, waitUntilStackDeleteComplete } = vi.hoisted(() => ({
+  waitUntilStackCreateComplete: vi.fn(),
+  waitUntilStackDeleteComplete: vi.fn(),
+}));
+
+vi.mock("@aws-sdk/client-cloudformation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@aws-sdk/client-cloudformation")>();
+  return { ...actual, waitUntilStackCreateComplete, waitUntilStackDeleteComplete };
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function fakeCfn(opts: { exists: boolean; noUpdates?: boolean }) {
   const calls: string[] = [];
@@ -31,6 +45,46 @@ function fakeCfn(opts: { exists: boolean; noUpdates?: boolean }) {
 }
 
 describe("deployStack", () => {
+  it("retries one fresh create after the configured transient failure is deleted", async () => {
+    waitUntilStackCreateComplete.mockRejectedValueOnce(new Error("create failed")).mockResolvedValueOnce({});
+    waitUntilStackDeleteComplete.mockResolvedValueOnce({});
+    const calls: string[] = [];
+    const cfn = {
+      send: async (c: any) => {
+        const cmd = c.constructor.name;
+        calls.push(cmd);
+        if (cmd === "DescribeStacksCommand") {
+          if (!calls.includes("CreateStackCommand")) {
+            throw Object.assign(new Error("Stack does not exist"), { name: "ValidationError" });
+          }
+          return { Stacks: [{ Outputs: [{ OutputKey: "TableName", OutputValue: "keel" }] }] };
+        }
+        if (cmd === "DescribeStackEventsCommand") {
+          return { StackEvents: [{ ResourceStatusReason: "transient KMS grant failure" }] };
+        }
+        return {};
+      },
+    } as any;
+
+    const out = await deployStack(cfn, "keel-control-plane", "tpl", {}, {
+      retryCreateFailure: (reasons) => reasons.includes("transient KMS grant failure"),
+    });
+
+    expect(calls.filter((call) => call === "CreateStackCommand")).toHaveLength(2);
+    expect(waitUntilStackDeleteComplete).toHaveBeenCalledOnce();
+    expect(out.TableName).toBe("keel");
+  });
+
+  it("does not retry create failures that the caller does not classify as transient", async () => {
+    waitUntilStackCreateComplete.mockRejectedValueOnce(new Error("create failed"));
+    const { calls, cfn } = fakeCfn({ exists: false });
+
+    await expect(deployStack(cfn, "keel-control-plane", "tpl", {}, { retryCreateFailure: () => false }))
+      .rejects.toThrow("create failed");
+    expect(calls.filter((call) => call === "CreateStackCommand")).toHaveLength(1);
+    expect(waitUntilStackDeleteComplete).not.toHaveBeenCalled();
+  });
+
   it("rejects instead of swallowing a transient DescribeStacks error into a create attempt", async () => {
     const calls: string[] = [];
     const cfn = {
