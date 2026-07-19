@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setupCommand } from "../src/commands/setup";
+import { isKmsGrantRolePropagationFailure, setupCommand } from "../src/commands/setup";
 
 function fakeClients() {
   const calls: Array<{ client: string; cmd: string; input: any }> = [];
@@ -51,6 +51,13 @@ function fakeClients() {
 }
 
 describe("setupCommand", () => {
+  it("recognizes only the documented Lambda KMS grant propagation failure", () => {
+    expect(isKmsGrantRolePropagationFailure([
+      "Lambda was unable to configure access to your environment variables because the KMS key is invalid for CreateGrant: ARN does not refer to a valid principal",
+    ])).toBe(true);
+    expect(isKmsGrantRolePropagationFailure(["AccessDenied: missing permission"])).toBe(false);
+  });
+
   it("deploys the stack with the webhook code and writes global config", async () => {
     const { calls, clients } = fakeClients();
     const configPath = join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");

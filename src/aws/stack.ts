@@ -1,14 +1,20 @@
 import {
   CloudFormationClient,
   CreateStackCommand,
+  DescribeStackEventsCommand,
   DescribeStacksCommand,
   UpdateStackCommand,
   waitUntilStackCreateComplete,
+  waitUntilStackDeleteComplete,
   waitUntilStackUpdateComplete,
   type Capability,
 } from "@aws-sdk/client-cloudformation";
 
 type Cfn = Pick<CloudFormationClient, "send">;
+
+export interface DeployStackOptions {
+  retryCreateFailure?: (reasons: string[]) => boolean;
+}
 
 export async function stackOutputs(cfn: Cfn, name: string): Promise<Record<string, string>> {
   const res = await cfn.send(new DescribeStacksCommand({ StackName: name }));
@@ -29,11 +35,21 @@ async function stackExists(cfn: Cfn, name: string): Promise<boolean> {
   }
 }
 
+async function stackFailureReasons(cfn: Cfn, name: string): Promise<string[]> {
+  try {
+    const events = await cfn.send(new DescribeStackEventsCommand({ StackName: name }));
+    return (events.StackEvents ?? []).flatMap((event) => event.ResourceStatusReason ? [event.ResourceStatusReason] : []);
+  } catch {
+    return [];
+  }
+}
+
 export async function deployStack(
   cfn: Cfn,
   name: string,
   templateBody: string,
   params: Record<string, string>,
+  options: DeployStackOptions = {},
 ): Promise<Record<string, string>> {
   const Parameters = Object.entries(params).map(([k, v]) => ({ ParameterKey: k, ParameterValue: v }));
   const common = { StackName: name, TemplateBody: templateBody, Parameters, Capabilities: ["CAPABILITY_NAMED_IAM"] as Capability[] };
@@ -47,7 +63,14 @@ export async function deployStack(
     }
   } else {
     await cfn.send(new CreateStackCommand({ ...common, OnFailure: "DELETE" }));
-    await waitUntilStackCreateComplete({ client, maxWaitTime: 1800 }, { StackName: name });
+    try {
+      await waitUntilStackCreateComplete({ client, maxWaitTime: 1800 }, { StackName: name });
+    } catch (error) {
+      if (!options.retryCreateFailure?.(await stackFailureReasons(cfn, name))) throw error;
+      await waitUntilStackDeleteComplete({ client, maxWaitTime: 1800 }, { StackName: name });
+      await cfn.send(new CreateStackCommand({ ...common, OnFailure: "DELETE" }));
+      await waitUntilStackCreateComplete({ client, maxWaitTime: 1800 }, { StackName: name });
+    }
   }
   return stackOutputs(cfn, name);
 }
