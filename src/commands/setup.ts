@@ -19,6 +19,14 @@ export interface SetupOpts {
 
 const STACK = "keel-control-plane";
 
+export function isKmsGrantRolePropagationFailure(reasons: string[]): boolean {
+  return reasons.some((reason) =>
+    /Lambda was unable to configure access to your environment variables/i.test(reason) &&
+    /KMS key is invalid for CreateGrant/i.test(reason) &&
+    /does not refer to a valid principal/i.test(reason),
+  );
+}
+
 export async function setupCommand(
   opts: SetupOpts,
   io: { clients?: AwsClients; configPath?: string } = {},
@@ -77,7 +85,13 @@ export async function setupCommand(
   const template = readFileSync(new URL("../../infra/control-plane.yaml", import.meta.url), "utf8");
   const webhookCode = readFileSync(new URL("../../infra/webhook-handler.cjs", import.meta.url), "utf8");
   console.log(`deploying stack ${STACK} to ${region} (first run takes ~3 minutes)…`);
-  const outputs = await deployStack(clients.cfn, STACK, template, { WebhookCode: webhookCode });
+  const outputs = await deployStack(
+    clients.cfn,
+    STACK,
+    template,
+    { WebhookCode: webhookCode },
+    { retryCreateFailure: isKmsGrantRolePropagationFailure },
+  );
 
   if (opts.githubToken) {
     await clients.ssm.send(new PutParameterCommand({
