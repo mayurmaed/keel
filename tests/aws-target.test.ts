@@ -25,7 +25,7 @@ function fakeIo(deployStatuses: string[]) {
     const cmd = c.constructor.name;
     calls.push({ cmd, input: c.input });
     if (cmd === "GetParameterCommand") {
-      if (c.input.Name === "/keel/db/api/url") return { Parameter: { Value: "postgres://api:pw@db.example:5432/api" } };
+      if (c.input.Name === "/keel/db/api/url") return { Parameter: { Value: "postgres://api:pw@db.example:5432/api?sslmode=require" } };
       return { Parameter: { Value: "secret" } };
     }
     if (cmd === "ScanCommand") return { Items: [] };
@@ -130,6 +130,8 @@ describe("deployAws", () => {
     const startBuildIdx = calls.findIndex((c) => c.cmd === "StartBuildCommand");
     expect(putUrlIdx).toBeGreaterThanOrEqual(0);
     expect(putUrlIdx).toBeLessThan(startBuildIdx);
+    // apps get encrypt-without-verify — RDS certs chain to Amazon's CA the image doesn't trust
+    expect(calls[putUrlIdx].input.Value).toBe("postgres://api:pw@db.example:5432/api?sslmode=no-verify");
 
     const appStack = calls.find((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-app-web");
     const appParams = Object.fromEntries(appStack!.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));

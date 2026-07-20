@@ -79,7 +79,12 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
     dbRec = await getDb(reg, cfg.db);
     if (!dbRec) throw new Error(`database "${cfg.db}" not found — create it with \`keel db create ${cfg.db}\``);
     const urlRes = await clients.ssm.send(new GetParameterCommand({ Name: `/keel/db/${cfg.db}/url`, WithDecryption: true }));
-    await setEnvVar(reg, cfg.name, "DATABASE_URL", urlRes.Parameter!.Value as string);
+    // RDS certs chain to Amazon's CA, which app images don't trust — `sslmode=require` now means
+    // full verification in node-pg (and prisma's pg adapter), so injected as-is the app can't
+    // connect ("self-signed certificate in certificate chain", live-caught deploying a real
+    // Next.js/prisma app). Inject encrypt-without-verify, the same contract Heroku/Render use.
+    const appDbUrl = (urlRes.Parameter!.Value as string).replace(/sslmode=require/, "sslmode=no-verify");
+    await setEnvVar(reg, cfg.name, "DATABASE_URL", appDbUrl);
   }
   if (cfg.auth) {
     const authRec = await getAuth(reg, cfg.auth);
