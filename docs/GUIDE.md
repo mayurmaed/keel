@@ -280,8 +280,9 @@ psql "$(keel db url myapp)"
 ### Link a database to an app
 
 Add the database name to the app's `keel.json`. On `keel deploy` for the AWS
-target, Keel injects `DATABASE_URL` from SSM and intends to open the database
-firewall to the app's security group.
+target, Keel injects `DATABASE_URL` from SSM and opens the database firewall
+to the app's security group (via the app stack, so db-linked deploys stabilize
+cleanly — live-verified with a production Next.js + prisma app).
 
 ```json
 {
@@ -291,8 +292,33 @@ firewall to the app's security group.
 }
 ```
 
-App linking is pending real-AWS verification (issue #7) and a known deploy
-issue is being fixed (issue #15), so linking is currently best-effort.
+**TLS:** the injected `DATABASE_URL` uses `sslmode=no-verify` — encrypted, but
+skipping CA verification, the same contract Heroku and Render use. RDS certs
+chain to Amazon's CA, which app images don't trust out of the box, so strict
+verification would fail for every driver that treats `require` as verify-full
+(node-pg ≥ 8.16, prisma's pg adapter).
+
+To opt in to full verification, ship the AWS RDS CA bundle in your image and
+point `dbSslRootCert` at it — Keel then injects
+`sslmode=verify-full&sslrootcert=<path>` instead:
+
+```dockerfile
+# in your Dockerfile (pick your region's bundle)
+ADD https://truststore.pki.rds.amazonaws.com/ap-south-1/ap-south-1-bundle.pem /rds-ca.pem
+```
+
+```json
+{
+  "name": "myapp",
+  "target": "aws",
+  "db": "myapp",
+  "dbSslRootCert": "/rds-ca.pem"
+}
+```
+
+The path must be absolute (it's where the bundle lives *inside the container*).
+Drivers that follow libpq's `sslrootcert` (node-pg, psycopg, prisma's pg
+adapter) pick it up from the URL directly.
 
 ### Command reference
 

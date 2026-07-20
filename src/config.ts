@@ -17,6 +17,10 @@ export interface AppConfig {
   repo?: string;
   dir?: string;
   db?: string;
+  /** Absolute in-container path to a CA bundle (e.g. the AWS RDS bundle) the app image ships.
+   *  When set, the injected DATABASE_URL uses sslmode=verify-full&sslrootcert=<path> instead
+   *  of the default sslmode=no-verify. */
+  dbSslRootCert?: string;
   auth?: string;
   project?: string;
 }
@@ -43,6 +47,10 @@ export function validateAppConfig(c: unknown): string[] {
     (typeof cfg.dir !== "string" || cfg.dir.startsWith("/") || cfg.dir.includes(".."))
   ) errs.push("dir must be a relative path inside the repo");
   if (cfg?.db !== undefined && (typeof cfg.db !== "string" || !DB_NAME_RE.test(cfg.db))) errs.push("db must be a lowercase postgres-safe name (letters, digits, underscores)");
+  if (
+    cfg?.dbSslRootCert !== undefined &&
+    (typeof cfg.dbSslRootCert !== "string" || !cfg.dbSslRootCert.startsWith("/") || /[?&#\s]/.test(cfg.dbSslRootCert))
+  ) errs.push("dbSslRootCert must be an absolute in-container file path (no spaces or URL metacharacters)");
   if (cfg?.project !== undefined && typeof cfg.project !== "string") errs.push("project must be a string");
   if (cfg?.auth !== undefined && (typeof cfg.auth !== "string" || !AUTH_NAME_RE.test(cfg.auth)))
     errs.push("auth must be a lowercase name (letters, digits, dashes), 2-32 chars");
