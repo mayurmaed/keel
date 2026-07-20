@@ -28,6 +28,7 @@ export async function newCommand(
     healthPath: "/",
     ...(repo ? { repo } : {}),
     ...(opts.db ? { db: opts.db } : {}),
+    ...(opts.dbSslRootCert ? { dbSslRootCert: opts.dbSslRootCert } : {}),
     ...(opts.project ? { project: opts.project } : {}),
     ...(opts.auth ? { auth: opts.auth } : {}),
   };

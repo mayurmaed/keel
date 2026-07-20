@@ -139,6 +139,20 @@ describe("deployAws", () => {
     expect(calls.some((c) => c.cmd === "AuthorizeSecurityGroupIngressCommand")).toBe(false);
   });
 
+  it("deployAws with dbSslRootCert injects verify-full pointed at the app's CA bundle", async () => {
+    const { calls, io } = fakeIo(["queued", "building", "live"]);
+    const dbCfg = { ...cfg, db: "api", dbSslRootCert: "/rds-ca.pem" };
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      await deployAws(dbCfg, io);
+    } finally {
+      console.log = orig;
+    }
+    const put = calls.find((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/web/env/DATABASE_URL");
+    expect(put!.input.Value).toBe("postgres://api:pw@db.example:5432/api?sslmode=verify-full&sslrootcert=/rds-ca.pem");
+  });
+
   it("deployAws with a missing db fails fast", async () => {
     const { calls, io } = fakeIo(["queued", "building", "live"]);
     const dbCfg = { ...cfg, db: "missing" };

@@ -81,6 +81,16 @@ describe("load/save", () => {
     expect(validateAppConfig({ name: "web", port: 80, target: "local", db: "api_db" })).toEqual([]);
   });
 
+  it("accepts an absolute dbSslRootCert path and rejects relative or URL-unsafe ones", () => {
+    const base = { name: "web", port: 80, target: "local" as const };
+    expect(validateAppConfig({ ...base, dbSslRootCert: "/rds-ca.pem" })).toEqual([]);
+    for (const bad of ["rds-ca.pem", "/path with space.pem", "/a?b.pem", 5]) {
+      expect(validateAppConfig({ ...base, dbSslRootCert: bad })).toContainEqual(
+        expect.stringMatching(/dbSslRootCert/),
+      );
+    }
+  });
+
   it("rejects project field if not a string", () => {
     expect(validateAppConfig({ name: "web", port: 80, target: "local", project: 5 })).toContainEqual(
       expect.stringMatching(/project must be a string/),
