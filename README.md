@@ -17,7 +17,7 @@ Store. It is serverless while idle; deployed apps, databases, and load balancers
 have their normal AWS costs. See the [architecture guide](docs/GUIDE.md#1-architecture)
 for details.
 
-**Tested:** 132 passing unit tests (`npm test`); they need no AWS account or
+**Tested:** 137 passing unit tests (`npm test`); they need no AWS account or
 network access.
 
 ## Demo
