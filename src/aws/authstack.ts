@@ -4,7 +4,7 @@ import { GetParameterCommand, PutParameterCommand } from "@aws-sdk/client-ssm";
 import type { AwsClients } from "./clients.js";
 import type { GlobalConfig } from "./globalconfig.js";
 import type { IngressInfo } from "./ingress.js";
-import { deployStack } from "./stack.js";
+import { deployStack, projectTags } from "./stack.js";
 
 export async function ensureJwtSecret(ssm: { send(c: any): Promise<any> }, name: string): Promise<string> {
   const paramName = `/keel/auth/${name}/jwt-secret`;
@@ -53,6 +53,6 @@ export async function ensureAuthStack(
     TaskExecRoleArn: cp.taskExecRoleArn,
     LogGroup: cp.logGroup,
     Image: "supabase/auth:v2.151.0",
-  });
+  }, { tags: projectTags(auth.project) });
   return { url: out.Url, taskSgId: out.TaskSgId };
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { AwsClients } from "./clients.js";
 import type { GlobalConfig } from "./globalconfig.js";
-import { deployStack } from "./stack.js";
+import { deployStack, SHARED_TAGS } from "./stack.js";
 
 export interface IngressInfo {
   albDns: string;
@@ -22,7 +22,7 @@ export async function ensureIngress(clients: Pick<AwsClients, "cfn">, gcfg: Glob
     BaseDomain: gcfg.baseDomain ?? "",
     HostedZoneId: gcfg.hostedZoneId ?? "",
   };
-  const out = await deployStack(clients.cfn, INGRESS_STACK, template, params);
+  const out = await deployStack(clients.cfn, INGRESS_STACK, template, params, { tags: SHARED_TAGS });
   return {
     albDns: out.AlbDns,
     albArn: out.AlbArn,

@@ -60,7 +60,7 @@ export async function dbCreate(
   } else {
     stack = `keel-db-${name}`;
     ({ host, dbSgId, masterPassword } = await ensureDbInstance(clients, gcfg, {
-      stackName: stack, instanceId: stack, masterPasswordSsm: `/keel/db/${name}/master`, dbName: name,
+      stackName: stack, instanceId: stack, masterPasswordSsm: `/keel/db/${name}/master`, dbName: name, project: opts.project ?? name,
       ...(opts.backupDays ? { backupDays: Number(opts.backupDays) } : {}),
     }));
     await setMasterIpRule(clients.ec2, dbSgId, await getMyIp(fetchImpl));
