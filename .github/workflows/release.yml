@@ -1,0 +1,58 @@
+name: release
+
+# Publishing is driven entirely by tags: `npm version <patch|minor|major>` then
+# `git push --follow-tags`. Nothing publishes on a normal push to main.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      # prepublishOnly runs build + tests again at publish time; this fails the job
+      # early with readable output instead of failing inside `npm publish`.
+      - run: npm run build
+      - run: npm test
+
+      - name: Fail if the tag does not match the package version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag v$tag does not match package.json version $pkg" >&2
+            exit 1
+          fi
+
+      # The CLI reads infra/*.yaml at runtime relative to dist/ — if they are not in the
+      # tarball, every `keel setup`/`deploy` fails on a fresh install with ENOENT.
+      - name: Fail if the tarball is missing the infra templates
+        run: |
+          # Filename varies with the package name (a scoped package packs as
+          # <scope>-<name>-<version>.tgz), so match on the extension, not the name.
+          tarball="$(npm pack --silent)"
+          tar -tzf "$tarball" | grep -q "package/infra/control-plane.yaml" \
+            || { echo "infra templates missing from $tarball" >&2; exit 1; }
+
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes

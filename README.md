@@ -36,7 +36,14 @@ you control.
 
 ### Prerequisites
 
-- Node.js 20 or newer, and the Keel CLI built or installed.
+- Node.js 20 or newer, and the Keel CLI installed:
+
+  ```bash
+  npm install -g @mayurmaed/keel   # installs the `keel` command
+  ```
+
+  (Scoped because the unscoped `keel` name on npm belongs to an unrelated project.)
+
 - An AWS account with the AWS CLI configured. A dedicated profile is recommended.
 - A GitHub repository containing the app and a `Dockerfile`.
 - For a private GitHub repository, a fine-grained token with `Contents: read`.

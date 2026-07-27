@@ -1,14 +1,51 @@
 {
-  "name": "keel",
+  "name": "@mayurmaed/keel",
   "version": "0.1.0",
+  "description": "Deploy apps to your own AWS account (or local Docker). Self-hosted Render/Supabase replacement.",
+  "license": "Apache-2.0",
+  "author": "Mayur Maed",
+  "homepage": "https://github.com/mayurmaed/keel#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mayurmaed/keel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mayurmaed/keel/issues"
+  },
+  "keywords": [
+    "aws",
+    "deploy",
+    "paas",
+    "self-hosted",
+    "render",
+    "supabase",
+    "fargate",
+    "cloudformation",
+    "cli"
+  ],
   "type": "module",
   "bin": {
     "keel": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "infra",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1081.0",
