@@ -410,6 +410,28 @@ The deploy record in DynamoDB shows `failed`, and `keel status` reflects it.
 - **Running apps:** arrive in Plan B2 (Fargate tasks behind a shared load
   balancer). Nothing runs continuously yet in B1.
 
+### Every project on this machine
+
+`keel` commands are per-repo, but apps, databases and auth services also get
+recorded in a machine-level registry at `~/.keel/projects.json`. `keel status
+--all` reads it and works from any directory — no `keel.json` needed:
+
+```bash
+keel status --all
+# acme  (ap-south-1)
+#   app   web                   keel-app-web              http://alb.example:8001
+#   db    maindb                keel-db-shared            rds.example:5432
+#   auth  login                 keel-auth-login           http://alb.example:8100
+# blog  (us-east-1)
+#   app   site                  keel-app-site             /Users/x/blog
+```
+
+`keel deploy`, `db create` and `auth create` add entries; the matching `destroy`
+commands remove them. The registry is only an index — DynamoDB stays the source of
+truth — so if the file is deleted or corrupted, keel keeps working and re-populates
+it on the next deploy. Resources provisioned before this feature existed appear the
+first time you redeploy them. Set `KEEL_HOME` to point the registry somewhere else.
+
 **Per-project cost:** every stack keel creates is tagged `keel:managed=true`, and
 project-scoped stacks (apps, dedicated databases, auth) also carry
 `keel:project=<name>`. CloudFormation propagates both to the resources inside the
@@ -435,6 +457,7 @@ repo contents and `/keel/*` parameters separately if you want a clean slate.
 | Thing | Location |
 |---|---|
 | CLI config | `~/.keel/config.json` |
+| Project registry (`status --all`) | `~/.keel/projects.json` |
 | App + deploy records | DynamoDB table `keel` |
 | Webhook secret | SSM `/keel/<app>/webhook-secret` |
 | App env vars | SSM `/keel/<app>/env/<KEY>` |

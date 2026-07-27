@@ -8,6 +8,7 @@ import { envCommand } from "./commands/env.js";
 import { setupCommand } from "./commands/setup.js";
 import { dbCreate, dbList, dbUrl, dbAllowIp, dbDestroy } from "./commands/db.js";
 import { authCreate, authList, authUrl, authDestroy } from "./commands/auth.js";
+import { formatProjects, readProjects } from "./aws/projects.js";
 
 async function printLocalApps(): Promise<void> {
   const lines = await listLocal();
@@ -108,8 +109,14 @@ export function buildProgram(): Command {
 
   program
     .command("status")
-    .description("recent deploys (aws) or running container (local)")
-    .action(async () => {
+    .description("recent deploys (aws) or running container (local); --all for every project on this machine")
+    .option("--all", "every keel project on this machine (works from any directory)")
+    .action(async (opts: { all?: boolean }) => {
+      // --all reads the machine-level registry, so it must not require a keel.json.
+      if (opts.all) {
+        console.log(formatProjects(readProjects()).join("\n"));
+        return;
+      }
       const cfg = loadAppConfig(process.cwd());
       if (cfg.target === "aws") {
         await statusAws(cfg);

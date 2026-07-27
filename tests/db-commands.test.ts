@@ -1,4 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { readProjects } from "../src/aws/projects";
 import { dbCreate, dbList, dbUrl, dbAllowIp, dbDestroy } from "../src/commands/db";
 import type { PgFactory } from "../src/aws/pgadmin";
 
@@ -298,5 +302,39 @@ describe("dbDestroy validation", () => {
   it("throws when the database is not registered", async () => {
     const { clients } = makeEnv();
     await expect(dbDestroy("nope", { gcfg, clients })).rejects.toThrow(/not found/);
+  });
+});
+
+describe("project registry sync (#18)", () => {
+  it("records the database on create and removes it on destroy", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-db-reg-"));
+    const projectsPath = join(dir, "projects.json");
+    try {
+      const { clients } = makeEnv();
+      const { factory } = fakePg();
+      const io = { gcfg, clients, pg: factory, fetchImpl: fakeFetch(), projectsPath };
+
+      await withoutLogs(() => dbCreate("api", { project: "acme" }, io));
+      const [rec] = readProjects(projectsPath);
+      expect(rec).toMatchObject({ kind: "db", name: "api", project: "acme", region: "ap-south-1", stack: "keel-db-shared" });
+
+      await withoutLogs(() => dbDestroy("api", io));
+      expect(readProjects(projectsPath)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("defaults the project to the database name when --project is not given", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-db-reg-"));
+    const projectsPath = join(dir, "projects.json");
+    try {
+      const { clients } = makeEnv();
+      const { factory } = fakePg();
+      await withoutLogs(() => dbCreate("api", {}, { gcfg, clients, pg: factory, fetchImpl: fakeFetch(), projectsPath }));
+      expect(readProjects(projectsPath)[0].project).toBe("api");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import { ensureAuthRole, realPg, type PgFactory } from "../aws/pgadmin.js";
 import { getMyIp, setMasterIpRule } from "../aws/dbstack.js";
 import { getDb, getAuth, listAuths, putAuth, deleteAuthRecord, AUTH_NAME_RE } from "../aws/registry.js";
+import { recordResource, forgetResource } from "../aws/projects.js";
 
 export type AuthIo = AwsIo & { pg?: PgFactory; fetchImpl?: typeof fetch };
 
@@ -57,6 +58,10 @@ export async function authCreate(
     host: new URL(url).host, port: albPort, stack: `keel-auth-${name}`, taskSgId, url,
     createdAt: new Date().toISOString(),
   });
+  recordResource({
+    kind: "auth", name, project: opts.project ?? name, region: gcfg.region,
+    stack: `keel-auth-${name}`, url, createdAt: new Date().toISOString(),
+  }, io.projectsPath);
   console.log(`auth "${name}" ready: ${url}`);
   console.log(`JWT secret in SSM: ${jwtSecretParam}`);
   console.log(`link an app by adding "auth": "${name}" to its keel.json`);
@@ -87,5 +92,6 @@ export async function authDestroy(name: string, io: AwsIo = {}): Promise<void> {
   await clients.ssm.send(new DeleteParameterCommand({ Name: `/keel/auth/${name}/jwt-secret` })).catch(() => {});
   await clients.ssm.send(new DeleteParameterCommand({ Name: `/keel/auth/${name}/db-url` })).catch(() => {});
   await deleteAuthRecord(reg, name);
+  forgetResource("auth", name, io.projectsPath);
   console.log(`destroyed auth ${name} (database and its auth schema left intact)`);
 }
