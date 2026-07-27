@@ -42,9 +42,11 @@ jobs:
       # tarball, every `keel setup`/`deploy` fails on a fresh install with ENOENT.
       - name: Fail if the tarball is missing the infra templates
         run: |
-          npm pack --silent
-          tar -tzf keel-*.tgz | grep -q "package/infra/control-plane.yaml" \
-            || { echo "infra templates missing from the published tarball" >&2; exit 1; }
+          # Filename varies with the package name (a scoped package packs as
+          # <scope>-<name>-<version>.tgz), so match on the extension, not the name.
+          tarball="$(npm pack --silent)"
+          tar -tzf "$tarball" | grep -q "package/infra/control-plane.yaml" \
+            || { echo "infra templates missing from $tarball" >&2; exit 1; }
 
       - run: npm publish --provenance --access public
         env:

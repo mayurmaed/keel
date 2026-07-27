@@ -151,8 +151,11 @@ sequenceDiagram
 Install the CLI:
 
 ```bash
-npm install -g keel     # or run it without installing: npx keel <command>
+npm install -g @mayurmaed/keel     # the command it installs is just `keel`
 keel --version
+
+# or run it without installing:
+npx @mayurmaed/keel --version
 ```
 
 **Credentials — do not use root keys.** Create a dedicated IAM *user* (or better, an

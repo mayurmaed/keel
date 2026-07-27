@@ -1,5 +1,5 @@
 {
-  "name": "keel",
+  "name": "@mayurmaed/keel",
   "version": "0.1.0",
   "description": "Deploy apps to your own AWS account (or local Docker). Self-hosted Render/Supabase replacement.",
   "license": "Apache-2.0",
