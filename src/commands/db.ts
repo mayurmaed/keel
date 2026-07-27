@@ -5,6 +5,7 @@ import { DB_NAME_RE } from "../config.js";
 import { ensureDbInstance, getMyIp, setMasterIpRule } from "../aws/dbstack.js";
 import { realPg, createLogicalDb, dropLogicalDb, type PgFactory } from "../aws/pgadmin.js";
 import { putDb, getDb, listDbs, deleteDbRecord, type DbRecord } from "../aws/registry.js";
+import { recordResource, forgetResource } from "../aws/projects.js";
 import { awsDeps, type AwsIo } from "../targets/aws.js";
 
 export type DbIo = AwsIo & { pg?: PgFactory; fetchImpl?: typeof fetch };
@@ -75,6 +76,10 @@ export async function dbCreate(
     name, project: opts.project ?? name, isolation, access: "public", engine: "postgres",
     host, port: 5432, dbName: name, dbUser, stack, dbSgId, createdAt: new Date().toISOString(),
   });
+  recordResource({
+    kind: "db", name, project: opts.project ?? name, region: gcfg.region,
+    stack, url: `${host}:5432`, createdAt: new Date().toISOString(),
+  }, io.projectsPath);
   console.log(url);
   console.log("your current IP is allowed. if it changes: keel db allow-ip");
 }
@@ -142,6 +147,7 @@ export async function dbDestroy(name: string, io: DbIo = {}): Promise<void> {
     if (e?.name !== "ParameterNotFound") throw e;
   }
   await deleteDbRecord(reg, name);
+  forgetResource("db", name, io.projectsPath);
   console.log(`destroyed database "${name}"`);
 
   if (rec.isolation === "shared") {
