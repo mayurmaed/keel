@@ -6,10 +6,10 @@ import { newCommand } from "../src/commands/new";
 import { envCommand } from "../src/commands/env";
 import { loadAppConfig } from "../src/config";
 
-const tmp = () => mkdtempSync(join(tmpdir(), "keel-test-"));
+const tmp = () => mkdtempSync(join(tmpdir(), "bareboat-test-"));
 
 describe("newCommand (non-interactive)", () => {
-  it("writes a valid keel.json from flags", async () => {
+  it("writes a valid bareboat.json from flags", async () => {
     const dir = tmp();
     await newCommand({ name: "web", port: "3000", target: "local" }, dir);
     const cfg = loadAppConfig(dir);
@@ -22,7 +22,7 @@ describe("newCommand (non-interactive)", () => {
 });
 
 describe("envCommand", () => {
-  it("sets, lists, and unsets vars in keel.json", async () => {
+  it("sets, lists, and unsets vars in bareboat.json", async () => {
     const dir = tmp();
     await newCommand({ name: "web", port: "3000", target: "local" }, dir);
     envCommand("set", ["A=1", "B=x=y"], dir);

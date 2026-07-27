@@ -19,12 +19,12 @@ export interface ProjectResource {
 }
 
 /**
- * Resolved per call, not once at import, so `KEEL_HOME` can redirect it — that is
- * what keeps the test suite (and anyone running keel against a scratch home) from
- * writing into the real `~/.keel`.
+ * Resolved per call, not once at import, so `BAREBOAT_HOME` can redirect it — that is
+ * what keeps the test suite (and anyone running bareboat against a scratch home) from
+ * writing into the real `~/.bareboat`.
  */
 export function projectsPath(): string {
-  return join(process.env.KEEL_HOME ?? join(homedir(), ".keel"), "projects.json");
+  return join(process.env.BAREBOAT_HOME ?? join(homedir(), ".bareboat"), "projects.json");
 }
 
 /**
@@ -67,10 +67,10 @@ export function forgetResource(kind: ResourceKind, name: string, path = projects
   writeProjects(readProjects(path).filter((r) => !(r.kind === kind && r.name === name)), path);
 }
 
-/** Rendered lines for `keel status --all`. Pure, so it is cheap to test. */
+/** Rendered lines for `bareboat status --all`. Pure, so it is cheap to test. */
 export function formatProjects(resources: ProjectResource[]): string[] {
   if (!resources.length) {
-    return ["no keel resources recorded on this machine — deploy an app or create a database first"];
+    return ["no bareboat resources recorded on this machine — deploy an app or create a database first"];
   }
   const byProject = new Map<string, ProjectResource[]>();
   for (const r of resources) {
@@ -90,6 +90,6 @@ export function formatProjects(resources: ProjectResource[]): string[] {
     }
   }
   lines.push("");
-  lines.push("cost per project: AWS Cost Explorer, grouped by the keel:project tag");
+  lines.push("cost per project: AWS Cost Explorer, grouped by the bareboat:project tag");
   return lines;
 }

@@ -30,24 +30,24 @@ export const shellExec: Exec = (cmd, args) => run(cmd, args, true);
 // captures stdout only — for commands whose output the caller reformats/prints itself
 export const captureExec: Exec = (cmd, args) => run(cmd, args, false);
 
-export const containerName = (app: string) => `keel-${app}`;
+export const containerName = (app: string) => `bareboat-${app}`;
 
 export async function deployLocal(cfg: AppConfig, dir: string, exec: Exec = shellExec): Promise<string> {
-  await exec("docker", ["build", "-t", `keel/${cfg.name}`, dir]);
+  await exec("docker", ["build", "-t", `bareboat/${cfg.name}`, dir]);
   // ponytail: rm -f fails on first deploy (no container yet) — that's fine
   await exec("docker", ["rm", "-f", containerName(cfg.name)]).catch(() => {});
   const envArgs = Object.entries(cfg.env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
   await exec("docker", [
-    "run", "-d", "--name", containerName(cfg.name), "--label", "keel=1",
+    "run", "-d", "--name", containerName(cfg.name), "--label", "bareboat=1",
     "--restart", "unless-stopped", "-p", `${cfg.port}:${cfg.port}`,
-    ...envArgs, `keel/${cfg.name}`,
+    ...envArgs, `bareboat/${cfg.name}`,
   ]);
   return `http://localhost:${cfg.port}`;
 }
 
 export async function listLocal(exec: Exec = captureExec): Promise<string[]> {
   const out = await exec("docker", [
-    "ps", "--filter", "label=keel=1",
+    "ps", "--filter", "label=bareboat=1",
     "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}",
   ]);
   return out ? out.split("\n") : [];

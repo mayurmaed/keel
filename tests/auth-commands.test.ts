@@ -4,10 +4,10 @@ import { authCreate, authDestroy } from "../src/commands/auth";
 const gcfg = {
   region: "ap-south-1", ingress: "port",
   controlPlane: {
-    stackName: "keel-control-plane", tableName: "keel", clusterName: "keel",
-    ecrRepoUri: "1.dkr.ecr.x/keel-apps", buildProject: "keel-build",
+    stackName: "bareboat-control-plane", tableName: "bareboat", clusterName: "bareboat",
+    ecrRepoUri: "1.dkr.ecr.x/bareboat-apps", buildProject: "bareboat-build",
     webhookBase: "https://api.example.com/hook", taskExecRoleArn: "arn:x",
-    logGroup: "/keel/apps", vpcId: "vpc-1", subnetIds: ["s-1"],
+    logGroup: "/bareboat/apps", vpcId: "vpc-1", subnetIds: ["s-1"],
   },
 } as any;
 
@@ -35,7 +35,7 @@ function makeEnv() {
       const name = c.input.StackName as string;
       if (deletedStacks.has(name)) return { Stacks: [{ StackStatus: "DELETE_COMPLETE" }] };
       if (!createdStacks.has(name)) throw Object.assign(new Error("does not exist"), { name: "ValidationError" });
-      const outputs = name === "keel-ingress"
+      const outputs = name === "bareboat-ingress"
         ? { AlbDns: "alb.example", AlbArn: "arn:alb", AlbSgId: "sg-alb" }
         : { Url: "http://alb.example:8100", TaskSgId: "sg-auth" };
       return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: Object.entries(outputs).map(([k, v]) => ({ OutputKey: k, OutputValue: v })) }] };
@@ -114,20 +114,20 @@ describe("authCreate", () => {
   it("creates its stack, JWT secret, registry record, and URL", async () => {
     const { calls, ssmParams, dbRecords, authRecords, clients, pg, pgQueries, fetchImpl } = makeEnv();
     dbRecords.set("appdb", { name: "appdb", dbSgId: "sg-db" });
-    ssmParams.set("/keel/db/appdb/url", "postgres://appdb:pw@host:5432/appdb?sslmode=require");
+    ssmParams.set("/bareboat/db/appdb/url", "postgres://appdb:pw@host:5432/appdb?sslmode=require");
 
     const { logs } = await withoutLogs(() => authCreate("appauth", { db: "appdb" }, { gcfg, clients, pg, fetchImpl }));
 
-    expect(calls.some((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-auth-appauth")).toBe(true);
+    expect(calls.some((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "bareboat-auth-appauth")).toBe(true);
     // GoTrue gets a dedicated role that owns the auth schema with a role-level search_path
     expect(pgQueries.some((q) => /create schema if not exists auth/i.test(q))).toBe(true);
     expect(pgQueries.some((q) => /alter role .* set search_path = auth/i.test(q))).toBe(true);
-    const dbUrlPut = calls.find((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/auth/appauth/db-url");
+    const dbUrlPut = calls.find((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/bareboat/auth/appauth/db-url");
     expect(dbUrlPut?.input.Type).toBe("SecureString");
-    expect(dbUrlPut?.input.Value).toContain("keelauth_appauth");
-    const secretPut = calls.find((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/auth/appauth/jwt-secret");
+    expect(dbUrlPut?.input.Value).toContain("bareboatauth_appauth");
+    const secretPut = calls.find((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/bareboat/auth/appauth/jwt-secret");
     expect(secretPut?.input.Type).toBe("SecureString");
-    expect(ssmParams.has("/keel/auth/appauth/jwt-secret")).toBe(true);
+    expect(ssmParams.has("/bareboat/auth/appauth/jwt-secret")).toBe(true);
     expect(authRecords.get("appauth")).toMatchObject({ PK: "AUTH#appauth", db: "appdb" });
     expect(logs.join("\n")).toContain("http://");
   });
@@ -135,7 +135,7 @@ describe("authCreate", () => {
   it("requires a database and checks that it exists", async () => {
     const { clients } = makeEnv();
     await expect(authCreate("appauth", {}, { gcfg, clients })).rejects.toThrow(/--db/);
-    await expect(authCreate("appauth", { db: "missing" }, { gcfg, clients })).rejects.toThrow(/keel db create/);
+    await expect(authCreate("appauth", { db: "missing" }, { gcfg, clients })).rejects.toThrow(/bareboat db create/);
   });
 
   it("rejects invalid names before any AWS call", async () => {
@@ -147,11 +147,11 @@ describe("authCreate", () => {
   it("allocates auth listener ports at 8100 or higher", async () => {
     const { calls, ssmParams, dbRecords, authRecords, clients, pg, fetchImpl } = makeEnv();
     dbRecords.set("appdb", { name: "appdb", dbSgId: "sg-db" });
-    ssmParams.set("/keel/db/appdb/url", "postgres://appdb:pw@host:5432/appdb?sslmode=require");
+    ssmParams.set("/bareboat/db/appdb/url", "postgres://appdb:pw@host:5432/appdb?sslmode=require");
     authRecords.set("existing", { name: "existing", port: 8105 });
     await withoutLogs(() => authCreate("appauth", { db: "appdb" }, { gcfg, clients, pg, fetchImpl }));
 
-    const create = calls.find((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-auth-appauth")!;
+    const create = calls.find((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "bareboat-auth-appauth")!;
     const params = Object.fromEntries(create.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));
     expect(Number(params.AlbPort)).toBeGreaterThanOrEqual(8100);
   });
@@ -160,15 +160,15 @@ describe("authCreate", () => {
 describe("authDestroy", () => {
   it("deletes its stack, JWT secret, and registry record", async () => {
     const { calls, ssmParams, authRecords, clients } = makeEnv();
-    ssmParams.set("/keel/auth/appauth/jwt-secret", "secret");
-    ssmParams.set("/keel/auth/appauth/db-url", "postgres://x");
+    ssmParams.set("/bareboat/auth/appauth/jwt-secret", "secret");
+    ssmParams.set("/bareboat/auth/appauth/db-url", "postgres://x");
     authRecords.set("appauth", { name: "appauth", db: "appdb" });
 
     await withoutLogs(() => authDestroy("appauth", { gcfg, clients }));
 
-    expect(calls.some((c) => c.cmd === "DeleteStackCommand" && c.input.StackName === "keel-auth-appauth")).toBe(true);
-    expect(calls.some((c) => c.cmd === "DeleteParameterCommand" && c.input.Name === "/keel/auth/appauth/jwt-secret")).toBe(true);
-    expect(calls.some((c) => c.cmd === "DeleteParameterCommand" && c.input.Name === "/keel/auth/appauth/db-url")).toBe(true);
+    expect(calls.some((c) => c.cmd === "DeleteStackCommand" && c.input.StackName === "bareboat-auth-appauth")).toBe(true);
+    expect(calls.some((c) => c.cmd === "DeleteParameterCommand" && c.input.Name === "/bareboat/auth/appauth/jwt-secret")).toBe(true);
+    expect(calls.some((c) => c.cmd === "DeleteParameterCommand" && c.input.Name === "/bareboat/auth/appauth/db-url")).toBe(true);
     expect(calls.some((c) => c.cmd === "DeleteCommand" && c.input.Key.PK === "AUTH#appauth")).toBe(true);
   });
 });

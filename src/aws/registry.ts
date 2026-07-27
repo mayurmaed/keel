@@ -169,7 +169,7 @@ export async function listDeploys(d: RegistryDeps, app: string, limit = 10): Pro
 }
 
 export async function ensureWebhookSecret(d: RegistryDeps, app: string): Promise<string> {
-  const name = `/keel/${app}/webhook-secret`;
+  const name = `/bareboat/${app}/webhook-secret`;
   try {
     const res = await d.ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }));
     return res.Parameter.Value as string;
@@ -181,7 +181,7 @@ export async function ensureWebhookSecret(d: RegistryDeps, app: string): Promise
   }
 }
 
-const envPath = (app: string) => `/keel/${app}/env`;
+const envPath = (app: string) => `/bareboat/${app}/env`;
 
 export async function setEnvVar(d: RegistryDeps, app: string, key: string, value: string): Promise<void> {
   await d.ssm.send(new PutParameterCommand({

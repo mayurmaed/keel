@@ -17,7 +17,7 @@ export interface SetupOpts {
   ingress?: "port" | "domain";
 }
 
-const STACK = "keel-control-plane";
+const STACK = "bareboat-control-plane";
 
 export function isKmsGrantRolePropagationFailure(reasons: string[]): boolean {
   return reasons.some((reason) =>
@@ -41,7 +41,7 @@ export async function setupCommand(
     await clients.sts.send(new GetCallerIdentityCommand({}));
   } catch {
     throw new Error(
-      "AWS credentials not found or invalid. Run `aws configure` (or set AWS_PROFILE) and re-run `keel setup`.",
+      "AWS credentials not found or invalid. Run `aws configure` (or set AWS_PROFILE) and re-run `bareboat setup`.",
     );
   }
 
@@ -95,7 +95,7 @@ export async function setupCommand(
 
   if (opts.githubToken) {
     await clients.ssm.send(new PutParameterCommand({
-      Name: "/keel/github-token", Value: opts.githubToken, Type: "SecureString", Overwrite: true,
+      Name: "/bareboat/github-token", Value: opts.githubToken, Type: "SecureString", Overwrite: true,
     }));
   }
 
@@ -123,5 +123,5 @@ export async function setupCommand(
     io.configPath ?? GLOBAL_CONFIG_PATH,
   );
 
-  console.log(`keel is set up. webhook base: ${outputs.WebhookBase}`);
+  console.log(`bareboat is set up. webhook base: ${outputs.WebhookBase}`);
 }

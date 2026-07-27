@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: keel control plane - serverless, ~$0/mo idle
+Description: bareboat control plane - serverless, ~$0/mo idle
 
 Parameters:
   WebhookCode:
@@ -10,7 +10,7 @@ Resources:
   Table:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: keel
+      TableName: bareboat
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: PK
@@ -26,30 +26,30 @@ Resources:
   Repo:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: keel-apps
+      RepositoryName: bareboat-apps
       EmptyOnDelete: true
 
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
-      ClusterName: keel
+      ClusterName: bareboat
 
   AppLogs:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /keel/apps
+      LogGroupName: /bareboat/apps
       RetentionInDays: 30
 
   BuildLogs:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /keel/build
+      LogGroupName: /bareboat/build
       RetentionInDays: 14
 
   TaskExecRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: keel-task-exec
+      RoleName: bareboat-task-exec
       AssumeRolePolicyDocument:
         Statement:
           - Effect: Allow
@@ -63,19 +63,19 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: ssm:GetParameters
-                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/bareboat/*
 
   BuildRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: keel-build
+      RoleName: bareboat-build
       AssumeRolePolicyDocument:
         Statement:
           - Effect: Allow
             Principal: { Service: codebuild.amazonaws.com }
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: keel-build
+        - PolicyName: bareboat-build
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -99,7 +99,7 @@ Resources:
                 Resource: "*"
               - Effect: Allow
                 Action: [ecs:DescribeServices, ecs:UpdateService]
-                Resource: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/keel/keel-*
+                Resource: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/bareboat/bareboat-*
               - Effect: Allow
                 Action: iam:PassRole
                 Resource: !GetAtt TaskExecRole.Arn
@@ -109,16 +109,16 @@ Resources:
               - Effect: Allow
                 Action: [ssm:GetParameter, ssm:GetParametersByPath]
                 Resource:
-                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/github-token
-                  # GetParametersByPath authorizes against the path node itself (/keel/<app>/env),
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/bareboat/github-token
+                  # GetParametersByPath authorizes against the path node itself (/bareboat/<app>/env),
                   # not the child params — so both the node and /env/* are required.
-                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*/env
-                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*/env/*
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/bareboat/*/env
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/bareboat/*/env/*
 
   Build:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: keel-build
+      Name: bareboat-build
       ServiceRole: !GetAtt BuildRole.Arn
       TimeoutInMinutes: 30
       Artifacts: { Type: NO_ARTIFACTS }
@@ -148,7 +148,7 @@ Resources:
                   export ACCOUNT=$(echo "$CODEBUILD_BUILD_ARN" | cut -d: -f5)
                   mark() { aws dynamodb update-item --table-name "$TABLE" --key "{\"PK\":{\"S\":\"APP#$APP\"},\"SK\":{\"S\":\"DEPLOY#$DEPLOY_ID\"}}" --update-expression "SET #s = :s, updatedAt = :t" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values "{\":s\":{\"S\":\"$1\"},\":t\":{\"S\":\"$(date -u +%FT%TZ)\"}}"; }
                   mark building
-                  TOKEN=$(aws ssm get-parameter --name /keel/github-token --with-decryption --query Parameter.Value --output text 2>/dev/null || true)
+                  TOKEN=$(aws ssm get-parameter --name /bareboat/github-token --with-decryption --query Parameter.Value --output text 2>/dev/null || true)
                   if [ -n "$TOKEN" ] && [ "$TOKEN" != "None" ]; then
                     git clone -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')" --depth 1 --branch "$BRANCH" "$REPO_URL" /tmp/app
                   else
@@ -176,11 +176,11 @@ Resources:
                   if [ "$CODEBUILD_BUILD_SUCCEEDING" != "1" ]; then mark failed; exit 1; fi
                   docker push "$ECR_URI:$APP-$COMMIT"
                   docker push "$ECR_URI:$APP"
-                  SECRETS=$(aws ssm get-parameters-by-path --path "/keel/$APP/env" --query "Parameters[].Name" --output json 2>/dev/null | jq -c --arg r "$AWS_REGION" --arg a "$ACCOUNT" '[.[] | {name: (split("/")[-1]), valueFrom: ("arn:aws:ssm:" + $r + ":" + $a + ":parameter" + .)}]' 2>/dev/null || echo '[]')
+                  SECRETS=$(aws ssm get-parameters-by-path --path "/bareboat/$APP/env" --query "Parameters[].Name" --output json 2>/dev/null | jq -c --arg r "$AWS_REGION" --arg a "$ACCOUNT" '[.[] | {name: (split("/")[-1]), valueFrom: ("arn:aws:ssm:" + $r + ":" + $a + ":parameter" + .)}]' 2>/dev/null || echo '[]')
                   [ -n "$SECRETS" ] || SECRETS='[]'
-                  printf '{"family":"keel-%s","networkMode":"awsvpc","requiresCompatibilities":["FARGATE"],"cpu":"%s","memory":"%s","executionRoleArn":"%s","containerDefinitions":[{"name":"app","image":"%s:%s-%s","essential":true,"portMappings":[{"containerPort":%s}],"secrets":%s,"logConfiguration":{"logDriver":"awslogs","options":{"awslogs-group":"%s","awslogs-region":"%s","awslogs-stream-prefix":"%s"}}}]}' "$APP" "$CPU" "$MEMORY" "$EXEC_ROLE" "$ECR_URI" "$APP" "$COMMIT" "$PORT" "$SECRETS" "$LOG_GROUP" "$AWS_REGION" "$APP" > /tmp/taskdef.json
+                  printf '{"family":"bareboat-%s","networkMode":"awsvpc","requiresCompatibilities":["FARGATE"],"cpu":"%s","memory":"%s","executionRoleArn":"%s","containerDefinitions":[{"name":"app","image":"%s:%s-%s","essential":true,"portMappings":[{"containerPort":%s}],"secrets":%s,"logConfiguration":{"logDriver":"awslogs","options":{"awslogs-group":"%s","awslogs-region":"%s","awslogs-stream-prefix":"%s"}}}]}' "$APP" "$CPU" "$MEMORY" "$EXEC_ROLE" "$ECR_URI" "$APP" "$COMMIT" "$PORT" "$SECRETS" "$LOG_GROUP" "$AWS_REGION" "$APP" > /tmp/taskdef.json
                   aws ecs register-task-definition --cli-input-json file:///tmp/taskdef.json
-                  if [ -n "$(aws ecs describe-services --cluster "$CLUSTER" --services "keel-$APP" --query "services[?status=='ACTIVE'].serviceName" --output text)" ]; then aws ecs update-service --cluster "$CLUSTER" --service "keel-$APP" --task-definition "keel-$APP" --force-new-deployment >/dev/null; fi
+                  if [ -n "$(aws ecs describe-services --cluster "$CLUSTER" --services "bareboat-$APP" --query "services[?status=='ACTIVE'].serviceName" --output text)" ]; then aws ecs update-service --cluster "$CLUSTER" --service "bareboat-$APP" --task-definition "bareboat-$APP" --force-new-deployment >/dev/null; fi
                   mark live
               finally:
                 - |
@@ -189,7 +189,7 @@ Resources:
   HookRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: keel-webhook
+      RoleName: bareboat-webhook
       AssumeRolePolicyDocument:
         Statement:
           - Effect: Allow
@@ -198,7 +198,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: keel-webhook
+        - PolicyName: bareboat-webhook
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -209,12 +209,12 @@ Resources:
                 Resource: !GetAtt Build.Arn
               - Effect: Allow
                 Action: ssm:GetParameter
-                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/keel/*/webhook-secret
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/bareboat/*/webhook-secret
 
   Hook:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: keel-webhook
+      FunctionName: bareboat-webhook
       Runtime: nodejs20.x
       Handler: index.handler
       Timeout: 10
@@ -229,7 +229,7 @@ Resources:
   Api:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: keel-hooks
+      Name: bareboat-hooks
       ProtocolType: HTTP
 
   ApiIntegration:

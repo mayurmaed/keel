@@ -26,7 +26,7 @@ const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export function awsDeps(io: AwsIo = {}) {
   const gcfg = io.gcfg ?? readGlobalConfig();
-  if (!gcfg.controlPlane) throw new Error("control plane missing — run `keel setup` first");
+  if (!gcfg.controlPlane) throw new Error("control plane missing — run `bareboat setup` first");
   if (gcfg.profile && !process.env.AWS_PROFILE) process.env.AWS_PROFILE = gcfg.profile;
   const clients = io.clients ?? makeClients(gcfg.region);
   const reg: RegistryDeps = { ddb: clients.ddb, ssm: clients.ssm, table: gcfg.controlPlane.tableName };
@@ -35,7 +35,7 @@ export function awsDeps(io: AwsIo = {}) {
 
 export async function registerAwsApp(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
   const { reg, cp } = awsDeps(io);
-  if (!cfg.repo) throw new Error("aws apps need a github repo — set `repo` in keel.json");
+  if (!cfg.repo) throw new Error("aws apps need a github repo — set `repo` in bareboat.json");
   // albPort is also the ListenerRule priority (albPort-8000) in domain mode, so it must start >= 8001.
   const apps = await listApps(reg);
   const used = apps.map((a) => a.albPort).filter((p): p is number => typeof p === "number");
@@ -80,8 +80,8 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
   let dbRec: DbRecord | undefined;
   if (cfg.db) {
     dbRec = await getDb(reg, cfg.db);
-    if (!dbRec) throw new Error(`database "${cfg.db}" not found — create it with \`keel db create ${cfg.db}\``);
-    const urlRes = await clients.ssm.send(new GetParameterCommand({ Name: `/keel/db/${cfg.db}/url`, WithDecryption: true }));
+    if (!dbRec) throw new Error(`database "${cfg.db}" not found — create it with \`bareboat db create ${cfg.db}\``);
+    const urlRes = await clients.ssm.send(new GetParameterCommand({ Name: `/bareboat/db/${cfg.db}/url`, WithDecryption: true }));
     // RDS certs chain to Amazon's CA, which app images don't trust — `sslmode=require` now means
     // full verification in node-pg (and prisma's pg adapter), so injected as-is the app can't
     // connect ("self-signed certificate in certificate chain", live-caught deploying a real
@@ -96,8 +96,8 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
   }
   if (cfg.auth) {
     const authRec = await getAuth(reg, cfg.auth);
-    if (!authRec) throw new Error(`auth "${cfg.auth}" not found — create it with \`keel auth create ${cfg.auth} --db <db>\``);
-    const jwtRes = await clients.ssm.send(new GetParameterCommand({ Name: `/keel/auth/${cfg.auth}/jwt-secret`, WithDecryption: true }));
+    if (!authRec) throw new Error(`auth "${cfg.auth}" not found — create it with \`bareboat auth create ${cfg.auth} --db <db>\``);
+    const jwtRes = await clients.ssm.send(new GetParameterCommand({ Name: `/bareboat/auth/${cfg.auth}/jwt-secret`, WithDecryption: true }));
     await setEnvVar(reg, cfg.name, "GOTRUE_URL", authRec.url);
     await setEnvVar(reg, cfg.name, "JWT_SECRET", jwtRes.Parameter!.Value as string);
   }
@@ -127,7 +127,7 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
         name: app.name,
         project: cfg.project ?? app.name,
         region: gcfg.region,
-        stack: `keel-app-${app.name}`,
+        stack: `bareboat-app-${app.name}`,
         repoPath: process.cwd(),
         url: appStack.url,
         createdAt: new Date().toISOString(),
@@ -149,7 +149,7 @@ export async function statusAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
   const { reg } = awsDeps(io);
   const deploys = await listDeploys(reg, cfg.name, 10);
   if (!deploys.length) {
-    console.log("no deploys yet — run `keel deploy`");
+    console.log("no deploys yet — run `bareboat deploy`");
     return;
   }
   for (const d of deploys) console.log(`${d.id}  ${d.status}  ${d.commit ?? "-"}  ${d.updatedAt}`);
@@ -193,7 +193,7 @@ export async function logsAws(
     do {
       const res = await clients.logs.send(
         new FilterLogEventsCommand({
-          logGroupName: "/keel/apps",
+          logGroupName: "/bareboat/apps",
           logStreamNamePrefix: cfg.name,
           startTime: from,
           nextToken,
@@ -220,7 +220,7 @@ export async function destroyAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> 
   if (!app) throw new Error(`app "${cfg.name}" is not registered — nothing to destroy`);
 
   // 1. Delete the per-app CloudFormation stack (service, target group, routing).
-  const stackName = `keel-app-${cfg.name}`;
+  const stackName = `bareboat-app-${cfg.name}`;
   await clients.cfn.send(new DeleteStackCommand({ StackName: stackName }));
   // maxWaitTime: 900 (15m) — delete is faster than create/update, which use 1800 (30m).
   await waitUntilStackDeleteComplete({ client: clients.cfn as CloudFormationClient, maxWaitTime: 900 }, { StackName: stackName });
@@ -242,7 +242,7 @@ export async function destroyAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> 
   let nextToken: string | undefined;
   do {
     const params = await clients.ssm.send(
-      new GetParametersByPathCommand({ Path: `/keel/${cfg.name}`, Recursive: true, NextToken: nextToken }),
+      new GetParametersByPathCommand({ Path: `/bareboat/${cfg.name}`, Recursive: true, NextToken: nextToken }),
     );
     for (const p of params.Parameters ?? []) {
       if (p.Name) {

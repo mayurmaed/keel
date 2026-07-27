@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const CONFIG_FILE = "keel.json";
+export const CONFIG_FILE = "bareboat.json";
 const NAME_RE = /^[a-z][a-z0-9-]{1,31}$/;
 const REPO_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+?(?:\.git)?$/;
 export const DB_NAME_RE = /^[a-z][a-z0-9_]{0,62}$/;
@@ -59,7 +59,7 @@ export function validateAppConfig(c: unknown): string[] {
 
 export function loadAppConfig(dir: string): AppConfig {
   const path = join(dir, CONFIG_FILE);
-  if (!existsSync(path)) throw new Error(`no ${CONFIG_FILE} in ${dir} — run \`keel new\` first`);
+  if (!existsSync(path)) throw new Error(`no ${CONFIG_FILE} in ${dir} — run \`bareboat new\` first`);
   const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<AppConfig>;
   const errs = validateAppConfig(raw);
   if (errs.length) throw new Error(`invalid ${CONFIG_FILE}: ${errs.join("; ")}`);

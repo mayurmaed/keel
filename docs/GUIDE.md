@@ -1,21 +1,21 @@
-# Keel — How It Works, How To Use It, How To Test It
+# Bareboat — How It Works, How To Use It, How To Test It
 
-Keel is a self-hosted Render/Supabase replacement that deploys your apps into
+Bareboat is a self-hosted Render/Supabase replacement that deploys your apps into
 **your own AWS account**. You run one setup command, and from then on a `git
-push` (or `keel deploy`) builds your app and ships it to AWS — no servers to
+push` (or `bareboat deploy`) builds your app and ships it to AWS — no servers to
 babysit, no per-seat SaaS bill, just your AWS usage.
 
 This guide covers the architecture, the deploy flows, and exactly how to use
 and test each piece.
 
 > **Status:** Plan B1/B2 (deploy + AWS runtime) and Phase 2 (managed Postgres)
-> are complete and live-verified end-to-end. `keel deploy` builds an app and
-> serves it at a real URL behind a shared load balancer; `keel logs`, `status`,
-> `destroy`, env vars, and push-to-redeploy all work. `keel db create` provisions
+> are complete and live-verified end-to-end. `bareboat deploy` builds an app and
+> serves it at a real URL behind a shared load balancer; `bareboat logs`, `status`,
+> `destroy`, env vars, and push-to-redeploy all work. `bareboat db create` provisions
 > RDS Postgres (shared or dedicated), and linking a database to an app injects
 > `DATABASE_URL` and opens a per-app firewall to it — verified with an app on
 > Fargate querying Postgres and serving `db ok`. Ingress mode (port vs.
-> subdomain-HTTPS) is chosen at `keel setup`. Next: Phase 3 (auth).
+> subdomain-HTTPS) is chosen at `bareboat setup`. Next: Phase 3 (auth).
 
 ---
 
@@ -27,8 +27,8 @@ serverless and costs ~$0/month when idle.
 ```mermaid
 flowchart TB
     subgraph Dev["Your machine"]
-        CLI["keel CLI"]
-        GC["~/.keel/config.json<br/>(region, profile, stack outputs)"]
+        CLI["bareboat CLI"]
+        GC["~/.bareboat/config.json<br/>(region, profile, stack outputs)"]
         CLI --- GC
     end
 
@@ -38,14 +38,14 @@ flowchart TB
         REPO --- HOOK
     end
 
-    subgraph AWS["Your AWS account (one CloudFormation stack: keel-control-plane)"]
+    subgraph AWS["Your AWS account (one CloudFormation stack: bareboat-control-plane)"]
         API["API Gateway<br/>HTTP API"]
-        LAM["Lambda<br/>keel-webhook"]
-        CB["CodeBuild<br/>keel-build"]
-        ECR["ECR<br/>keel-apps"]
-        ECS["ECS task definitions<br/>keel-&lt;app&gt;"]
-        DDB[("DynamoDB<br/>keel<br/>apps + deploys")]
-        SSM[("SSM Parameter Store<br/>/keel/* SecureStrings<br/>secrets, env, github-token")]
+        LAM["Lambda<br/>bareboat-webhook"]
+        CB["CodeBuild<br/>bareboat-build"]
+        ECR["ECR<br/>bareboat-apps"]
+        ECS["ECS task definitions<br/>bareboat-&lt;app&gt;"]
+        DDB[("DynamoDB<br/>bareboat<br/>apps + deploys")]
+        SSM[("SSM Parameter Store<br/>/bareboat/* SecureStrings<br/>secrets, env, github-token")]
     end
 
     CLI -->|setup / deploy / status / env| DDB
@@ -64,14 +64,14 @@ flowchart TB
 
 | Component | Role |
 |---|---|
-| `keel` CLI | Runs on your machine. Registers apps, starts builds, reads status. All AWS calls use the profile stored at setup. |
-| `~/.keel/config.json` | Written by `keel setup`. Holds region, AWS profile, and the control-plane resource names. |
-| DynamoDB table `keel` | Single table. App records (`PK=APP#<name>, SK=META`) and deploy records (`SK=DEPLOY#<id>`). |
-| SSM Parameter Store `/keel/*` | All secrets as encrypted SecureStrings: per-app webhook secret, per-app env vars, the GitHub token. Never stored in DynamoDB, never logged. |
-| Lambda `keel-webhook` | Receives GitHub pushes, verifies the HMAC signature, starts a build. |
-| CodeBuild `keel-build` | The build engine. Clones the repo, `docker build`, pushes to ECR, registers the task definition, updates the deploy status. |
-| ECR `keel-apps` | Stores built images, tagged `<app>` and `<app>-<commit>`. |
-| ECS task definitions `keel-<app>` | One family per app; each successful build registers a new revision. |
+| `bareboat` CLI | Runs on your machine. Registers apps, starts builds, reads status. All AWS calls use the profile stored at setup. |
+| `~/.bareboat/config.json` | Written by `bareboat setup`. Holds region, AWS profile, and the control-plane resource names. |
+| DynamoDB table `bareboat` | Single table. App records (`PK=APP#<name>, SK=META`) and deploy records (`SK=DEPLOY#<id>`). |
+| SSM Parameter Store `/bareboat/*` | All secrets as encrypted SecureStrings: per-app webhook secret, per-app env vars, the GitHub token. Never stored in DynamoDB, never logged. |
+| Lambda `bareboat-webhook` | Receives GitHub pushes, verifies the HMAC signature, starts a build. |
+| CodeBuild `bareboat-build` | The build engine. Clones the repo, `docker build`, pushes to ECR, registers the task definition, updates the deploy status. |
+| ECR `bareboat-apps` | Stores built images, tagged `<app>` and `<app>-<commit>`. |
+| ECS task definitions `bareboat-<app>` | One family per app; each successful build registers a new revision. |
 
 ---
 
@@ -88,7 +88,7 @@ sequenceDiagram
     participant Dev as You
     participant GH as GitHub
     participant API as API Gateway
-    participant Lam as Lambda (keel-webhook)
+    participant Lam as Lambda (bareboat-webhook)
     participant DDB as DynamoDB
     participant SSM as SSM
     participant CB as CodeBuild
@@ -106,9 +106,9 @@ sequenceDiagram
     CB->>DDB: status = building
     CB->>SSM: read GitHub token + app env
     CB->>ECR: docker build → push image
-    CB->>ECR: register task definition keel-<app>
+    CB->>ECR: register task definition bareboat-<app>
     CB->>DDB: status = live (or failed)
-    Dev->>DDB: keel status (reads deploy history)
+    Dev->>DDB: bareboat status (reads deploy history)
 ```
 
 **Security:** the Lambda verifies the GitHub HMAC signature (`X-Hub-Signature-256`)
@@ -116,7 +116,7 @@ against the per-app secret with a constant-time comparison, over the raw body,
 before parsing anything. A bad signature returns `401` and starts nothing; an
 unknown app or a push to a different branch returns `204` and does nothing.
 
-### B. Manual deploy (`keel deploy`)
+### B. Manual deploy (`bareboat deploy`)
 
 Same build engine, triggered directly from your machine — useful for the first
 deploy or when you want to ship without pushing.
@@ -125,12 +125,12 @@ deploy or when you want to ship without pushing.
 sequenceDiagram
     autonumber
     participant Dev as You
-    participant CLI as keel CLI
+    participant CLI as bareboat CLI
     participant DDB as DynamoDB
     participant CB as CodeBuild
     participant ECR as ECR / ECS
 
-    Dev->>CLI: keel deploy
+    Dev->>CLI: bareboat deploy
     CLI->>DDB: app registered? (auto-register if not)
     CLI->>DDB: write deploy record (queued)
     CLI->>CB: StartBuild
@@ -151,51 +151,51 @@ sequenceDiagram
 Install the CLI:
 
 ```bash
-npm install -g @mayurmaed/keel     # the command it installs is just `keel`
-keel --version
+npm install -g @mayurmaed/bareboat     # the command it installs is just `bareboat`
+bareboat --version
 
 # or run it without installing:
-npx @mayurmaed/keel --version
+npx @mayurmaed/bareboat --version
 ```
 
 **Credentials — do not use root keys.** Create a dedicated IAM *user* (or better, an
-IAM Identity Center / SSO profile) for keel and give it only the permissions it needs.
+IAM Identity Center / SSO profile) for bareboat and give it only the permissions it needs.
 [`docs/iam-policy.json`](iam-policy.json) is a least-privilege starting point: it scopes
-CloudFormation to `keel-*` stacks, DynamoDB to the `keel` table, SSM to `/keel/*`,
-CodeBuild to `keel-*` projects, and `iam:*Role` to `keel-*` roles. Actions that AWS does
+CloudFormation to `bareboat-*` stacks, DynamoDB to the `bareboat` table, SSM to `/bareboat/*`,
+CodeBuild to `bareboat-*` projects, and `iam:*Role` to `bareboat-*` roles. Actions that AWS does
 not support resource-level permissions for (most `Describe*`/`List*`) stay on `*`.
 
 ```bash
-aws iam create-user --user-name keel-cli
-aws iam put-user-policy --user-name keel-cli \
-  --policy-name keel-cli --policy-document file://docs/iam-policy.json
+aws iam create-user --user-name bareboat-cli
+aws iam put-user-policy --user-name bareboat-cli \
+  --policy-name bareboat-cli --policy-document file://docs/iam-policy.json
 ```
 
 Prefer short-lived credentials where you can — with IAM Identity Center, `aws sso login
---profile keel` and keel picks the profile up like any other. If you do use an access
-key, rotate it and never commit it; keel only ever reads credentials through the AWS SDK
+--profile bareboat` and bareboat picks the profile up like any other. If you do use an access
+key, rotate it and never commit it; bareboat only ever reads credentials through the AWS SDK
 chain and never stores them itself.
 
 ```bash
-# 1. Point the AWS CLI at the account Keel should use (a dedicated profile keeps
+# 1. Point the AWS CLI at the account Bareboat should use (a dedicated profile keeps
 #    it separate from your other AWS work).
-aws configure --profile keel
-aws sts get-caller-identity --profile keel      # confirm it works
+aws configure --profile bareboat
+aws sts get-caller-identity --profile bareboat      # confirm it works
 
 # 2. Create a GitHub fine-grained token (Contents: Read-only) for the repo(s)
-#    Keel will build, so CodeBuild can clone private repos.
+#    Bareboat will build, so CodeBuild can clone private repos.
 
 # 3. Deploy the control plane (~3 min the first time).
-keel setup --profile keel --region ap-south-1 --github-token <github_pat_...>
+bareboat setup --profile bareboat --region ap-south-1 --github-token <github_pat_...>
 ```
 
-`keel setup` deploys the CloudFormation stack, stores the token in SSM, and
-writes `~/.keel/config.json`. The profile is remembered — every later `keel`
+`bareboat setup` deploys the CloudFormation stack, stores the token in SSM, and
+writes `~/.bareboat/config.json`. The profile is remembered — every later `bareboat`
 command uses it automatically.
 
 ### Register and deploy an app
 
-Each app repo needs a `Dockerfile` and a `keel.json`. For AWS:
+Each app repo needs a `Dockerfile` and a `bareboat.json`. For AWS:
 
 ```json
 {
@@ -212,55 +212,55 @@ Each app repo needs a `Dockerfile` and a `keel.json`. For AWS:
 
 - `dir` is the subdirectory containing the Dockerfile (`.` for repo root; useful
   for monorepos).
-- `keel new` writes this interactively; or write it by hand.
+- `bareboat new` writes this interactively; or write it by hand.
 
 ```bash
 cd myapp/
-keel deploy        # builds via CodeBuild, registers the task definition
-keel status        # recent deploys: id, status, commit, timestamp
-keel env set DATABASE_URL=postgres://...   # stored encrypted in SSM
-keel deploy        # env changes take effect on the next deploy
+bareboat deploy        # builds via CodeBuild, registers the task definition
+bareboat status        # recent deploys: id, status, commit, timestamp
+bareboat env set DATABASE_URL=postgres://...   # stored encrypted in SSM
+bareboat deploy        # env changes take effect on the next deploy
 ```
 
 ### Enable push-to-deploy
 
-`keel new` (or the deploy output) prints a ready-to-run `gh` command that
+`bareboat new` (or the deploy output) prints a ready-to-run `gh` command that
 creates the webhook. Run it once per app:
 
 ```bash
 gh api repos/you/myapp/hooks -f 'name=web' -F 'active=true' -f 'events[]=push' \
-  -f 'config[url]=<webhook URL from keel>' \
+  -f 'config[url]=<webhook URL from bareboat>' \
   -f 'config[content_type]=json' \
-  -f 'config[secret]=<secret from keel>'
+  -f 'config[secret]=<secret from bareboat>'
 ```
 
 After that, every `git push` to your tracked branch deploys automatically.
 
-### Databases (`keel db`)
+### Databases (`bareboat db`)
 
-Keel can provision managed Postgres databases in the AWS account configured by
-`keel setup`. Creating a database prints its connection string once, stores it
-encrypted in SSM at `/keel/db/<name>/url`, and opens its firewall to your
+Bareboat can provision managed Postgres databases in the AWS account configured by
+`bareboat setup`. Creating a database prints its connection string once, stores it
+encrypted in SSM at `/bareboat/db/<name>/url`, and opens its firewall to your
 current public IP.
 
 ```bash
 # Shared isolation is the default. The first shared database provisions the
-# keel-db-shared db.t4g.micro RDS instance (about 8 minutes); later databases
+# bareboat-db-shared db.t4g.micro RDS instance (about 8 minutes); later databases
 # on that instance are created immediately.
-keel db create myapp
+bareboat db create myapp
 
 # Give a database a project label, or request a physically isolated RDS instance.
-keel db create myapp --project payments
-keel db create billing --isolation dedicated
+bareboat db create myapp --project payments
+bareboat db create billing --isolation dedicated
 
 # Free-plan AWS accounts must use one day of backup retention.
-keel db create myapp --backup-days 1
+bareboat db create myapp --backup-days 1
 ```
 
 `--isolation shared` is the default: it creates one logical database and role
-on the shared `db.t4g.micro` RDS instance, `keel-db-shared`, which costs about
+on the shared `db.t4g.micro` RDS instance, `bareboat-db-shared`, which costs about
 $13/month and is shared by all shared-mode databases. `--isolation dedicated`
-creates its own `keel-db-<name>` RDS instance, also about $13/month per
+creates its own `bareboat-db-<name>` RDS instance, also about $13/month per
 database, for physical isolation. Dedicated names become the RDS instance ID
 and DB name, so they cannot contain underscores, must be 55 characters or
 fewer, and cannot be `postgres`.
@@ -271,29 +271,29 @@ defaults to `7`; free-plan AWS accounts cap retention at `1`, so use
 
 ```bash
 # Show: name  isolation  project  host
-keel db list
+bareboat db list
 
 # Print the connection string stored in SSM.
-keel db url myapp
+bareboat db url myapp
 
 # Re-open the database firewall after your IP changes. With no --db, this
 # applies to all of your databases; omit the IP to auto-detect your current one.
-keel db allow-ip
-keel db allow-ip 203.0.113.10 --db myapp
+bareboat db allow-ip
+bareboat db allow-ip 203.0.113.10 --db myapp
 
 # Destroy a database (asks for confirmation unless --yes is supplied).
-keel db destroy myapp
-keel db destroy myapp --yes
+bareboat db destroy myapp
+bareboat db destroy myapp --yes
 ```
 
 Destroying a shared database drops its logical database and role; destroying a
 dedicated database deletes its instance stack. Both remove the SSM URL and
-registry record. Destroying the last shared database leaves `keel-db-shared`
-running (about $13/month); Keel prints the manual command below if you want to
+registry record. Destroying the last shared database leaves `bareboat-db-shared`
+running (about $13/month); Bareboat prints the manual command below if you want to
 remove it completely:
 
 ```bash
-aws cloudformation delete-stack --stack-name keel-db-shared
+aws cloudformation delete-stack --stack-name bareboat-db-shared
 ```
 
 ### Connecting from your machine
@@ -302,13 +302,13 @@ Your current IP is allowlisted when the database is created, so you can connect
 with `psql` directly. The URL retains `?sslmode=require` for psql/libpq.
 
 ```bash
-psql "$(keel db url myapp)"
+psql "$(bareboat db url myapp)"
 ```
 
 ### Link a database to an app
 
-Add the database name to the app's `keel.json`. On `keel deploy` for the AWS
-target, Keel injects `DATABASE_URL` from SSM and opens the database firewall
+Add the database name to the app's `bareboat.json`. On `bareboat deploy` for the AWS
+target, Bareboat injects `DATABASE_URL` from SSM and opens the database firewall
 to the app's security group (via the app stack, so db-linked deploys stabilize
 cleanly — live-verified with a production Next.js + prisma app).
 
@@ -327,7 +327,7 @@ verification would fail for every driver that treats `require` as verify-full
 (node-pg ≥ 8.16, prisma's pg adapter).
 
 To opt in to full verification, ship the AWS RDS CA bundle in your image and
-point `dbSslRootCert` at it — Keel then injects
+point `dbSslRootCert` at it — Bareboat then injects
 `sslmode=verify-full&sslrootcert=<path>` instead:
 
 ```dockerfile
@@ -352,18 +352,18 @@ adapter) pick it up from the URL directly.
 
 | Command | Local target | AWS target |
 |---|---|---|
-| `keel new` | writes keel.json | + registers the app, prints the webhook setup command |
-| `keel deploy` | `docker build` + `docker run` | CodeBuild → ECR → task definition |
-| `keel status` | running container | recent deploys from DynamoDB |
-| `keel env set/unset/list` | edits keel.json | SSM SecureStrings (applied next deploy) |
-| `keel logs` | `docker logs` | CloudWatch (`--follow` supported) |
-| `keel destroy` | removes the container | deletes the app stack, records, secrets |
-| `keel setup` | — | deploys the control plane |
-| `keel db create <name>` | — | provisions Postgres; prints the connection URL once |
-| `keel db list` | — | lists `name  isolation  project  host` |
-| `keel db url <name>` | — | prints the connection URL stored in SSM |
-| `keel db allow-ip [ip]` | — | allowlists an IP for all databases or `--db <name>` |
-| `keel db destroy <name>` | — | removes the database after confirmation (`--yes` skips it) |
+| `bareboat new` | writes bareboat.json | + registers the app, prints the webhook setup command |
+| `bareboat deploy` | `docker build` + `docker run` | CodeBuild → ECR → task definition |
+| `bareboat status` | running container | recent deploys from DynamoDB |
+| `bareboat env set/unset/list` | edits bareboat.json | SSM SecureStrings (applied next deploy) |
+| `bareboat logs` | `docker logs` | CloudWatch (`--follow` supported) |
+| `bareboat destroy` | removes the container | deletes the app stack, records, secrets |
+| `bareboat setup` | — | deploys the control plane |
+| `bareboat db create <name>` | — | provisions Postgres; prints the connection URL once |
+| `bareboat db list` | — | lists `name  isolation  project  host` |
+| `bareboat db url <name>` | — | prints the connection URL stored in SSM |
+| `bareboat db allow-ip [ip]` | — | allowlists an IP for all databases or `--db <name>` |
+| `bareboat db destroy <name>` | — | removes the database after confirmation (`--yes` skips it) |
 
 ---
 
@@ -375,28 +375,28 @@ The fastest way to confirm the CLI works end to end:
 
 ```bash
 cd sample-app/            # target: local
-keel deploy               # docker build + run
-curl localhost:3000       # → hello from keel
-keel status               # shows the running container
-keel destroy
+bareboat deploy               # docker build + run
+curl localhost:3000       # → hello from bareboat
+bareboat status               # shows the running container
+bareboat destroy
 ```
 
 ### Test the AWS build/deploy path
 
-Point `sample-app/keel.json` at your repo (`target: aws`, `repo`, `dir:
+Point `sample-app/bareboat.json` at your repo (`target: aws`, `repo`, `dir:
 sample-app`) and:
 
 ```bash
 cd sample-app/
-keel deploy
-# → build started (keel-build:...) — waiting…
+bareboat deploy
+# → build started (bareboat-build:...) — waiting…
 # → status: building
 # → status: live
 
 # Confirm the real artifacts landed:
-aws ecr list-images --repository-name keel-apps --profile keel \
+aws ecr list-images --repository-name bareboat-apps --profile bareboat \
   --query 'imageIds[].imageTag'                      # hello, hello-<commit>
-aws ecs list-task-definitions --family-prefix keel-hello --profile keel
+aws ecs list-task-definitions --family-prefix bareboat-hello --profile bareboat
 ```
 
 ### Test push-to-deploy
@@ -406,7 +406,7 @@ deploy appear without touching the CLI:
 
 ```bash
 git commit --allow-empty -m "test auto-deploy" && git push
-keel status                                          # a new 'live' record appears
+bareboat status                                          # a new 'live' record appears
 
 # Confirm GitHub delivered successfully:
 gh api repos/you/myapp/hooks/<hook-id>/deliveries \
@@ -419,13 +419,13 @@ A build that can't succeed (e.g. a nonexistent branch) should report `failed`,
 not hang:
 
 ```bash
-# In a throwaway keel.json with "branch": "no-such-branch":
-keel deploy
+# In a throwaway bareboat.json with "branch": "no-such-branch":
+bareboat deploy
 # → status: failed
 # → error: deploy failed during build — see <CodeBuild console link>
 ```
 
-The deploy record in DynamoDB shows `failed`, and `keel status` reflects it.
+The deploy record in DynamoDB shows `failed`, and `bareboat status` reflects it.
 
 ---
 
@@ -440,43 +440,43 @@ The deploy record in DynamoDB shows `failed`, and `keel status` reflects it.
 
 ### Every project on this machine
 
-`keel` commands are per-repo, but apps, databases and auth services also get
-recorded in a machine-level registry at `~/.keel/projects.json`. `keel status
---all` reads it and works from any directory — no `keel.json` needed:
+`bareboat` commands are per-repo, but apps, databases and auth services also get
+recorded in a machine-level registry at `~/.bareboat/projects.json`. `bareboat status
+--all` reads it and works from any directory — no `bareboat.json` needed:
 
 ```bash
-keel status --all
+bareboat status --all
 # acme  (ap-south-1)
-#   app   web                   keel-app-web              http://alb.example:8001
-#   db    maindb                keel-db-shared            rds.example:5432
-#   auth  login                 keel-auth-login           http://alb.example:8100
+#   app   web                   bareboat-app-web              http://alb.example:8001
+#   db    maindb                bareboat-db-shared            rds.example:5432
+#   auth  login                 bareboat-auth-login           http://alb.example:8100
 # blog  (us-east-1)
-#   app   site                  keel-app-site             /Users/x/blog
+#   app   site                  bareboat-app-site             /Users/x/blog
 ```
 
-`keel deploy`, `db create` and `auth create` add entries; the matching `destroy`
+`bareboat deploy`, `db create` and `auth create` add entries; the matching `destroy`
 commands remove them. The registry is only an index — DynamoDB stays the source of
-truth — so if the file is deleted or corrupted, keel keeps working and re-populates
+truth — so if the file is deleted or corrupted, bareboat keeps working and re-populates
 it on the next deploy. Resources provisioned before this feature existed appear the
-first time you redeploy them. Set `KEEL_HOME` to point the registry somewhere else.
+first time you redeploy them. Set `BAREBOAT_HOME` to point the registry somewhere else.
 
-**Per-project cost:** every stack keel creates is tagged `keel:managed=true`, and
+**Per-project cost:** every stack bareboat creates is tagged `bareboat:managed=true`, and
 project-scoped stacks (apps, dedicated databases, auth) also carry
-`keel:project=<name>`. CloudFormation propagates both to the resources inside the
-stack, so per-project spend is a Cost Explorer query grouped by the `keel:project`
-tag — no keel-side cost tracking needed. Activate the two tags once under *Billing →
+`bareboat:project=<name>`. CloudFormation propagates both to the resources inside the
+stack, so per-project spend is a Cost Explorer query grouped by the `bareboat:project`
+tag — no bareboat-side cost tracking needed. Activate the two tags once under *Billing →
 Cost allocation tags* before they show up in Cost Explorer. Shared infrastructure
 (control plane, ingress ALB, the shared database instance) carries only
-`keel:managed` — it backs every project, so attributing it to one would be wrong.
+`bareboat:managed` — it backs every project, so attributing it to one would be wrong.
 
 **Teardown** (removes all control-plane resources; keeps your code):
 
 ```bash
-aws cloudformation delete-stack --stack-name keel-control-plane --profile keel
+aws cloudformation delete-stack --stack-name bareboat-control-plane --profile bareboat
 ```
 
 ECR images and SSM parameters created outside the stack persist; delete the ECR
-repo contents and `/keel/*` parameters separately if you want a clean slate.
+repo contents and `/bareboat/*` parameters separately if you want a clean slate.
 
 ---
 
@@ -484,15 +484,15 @@ repo contents and `/keel/*` parameters separately if you want a clean slate.
 
 | Thing | Location |
 |---|---|
-| CLI config | `~/.keel/config.json` |
-| Project registry (`status --all`) | `~/.keel/projects.json` |
-| App + deploy records | DynamoDB table `keel` |
-| Webhook secret | SSM `/keel/<app>/webhook-secret` |
-| App env vars | SSM `/keel/<app>/env/<KEY>` |
-| GitHub token | SSM `/keel/github-token` |
-| Built images | ECR `keel-apps` (`<app>`, `<app>-<commit>`) |
-| Task definitions | ECS family `keel-<app>` |
-| Build logs | CloudWatch `/keel/build` |
-| App logs (B2) | CloudWatch `/keel/apps` |
+| CLI config | `~/.bareboat/config.json` |
+| Project registry (`status --all`) | `~/.bareboat/projects.json` |
+| App + deploy records | DynamoDB table `bareboat` |
+| Webhook secret | SSM `/bareboat/<app>/webhook-secret` |
+| App env vars | SSM `/bareboat/<app>/env/<KEY>` |
+| GitHub token | SSM `/bareboat/github-token` |
+| Built images | ECR `bareboat-apps` (`<app>`, `<app>-<commit>`) |
+| Task definitions | ECS family `bareboat-<app>` |
+| Build logs | CloudWatch `/bareboat/build` |
+| App logs (B2) | CloudWatch `/bareboat/apps` |
 | Infra definition | `infra/control-plane.yaml` (one CloudFormation stack) |
 | Webhook handler | `infra/webhook-handler.cjs` (deployed inline into the Lambda) |

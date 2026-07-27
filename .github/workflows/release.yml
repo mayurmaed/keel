@@ -39,7 +39,7 @@ jobs:
           fi
 
       # The CLI reads infra/*.yaml at runtime relative to dist/ — if they are not in the
-      # tarball, every `keel setup`/`deploy` fails on a fresh install with ENOENT.
+      # tarball, every `bareboat setup`/`deploy` fails on a fresh install with ENOENT.
       - name: Fail if the tarball is missing the infra templates
         run: |
           # Filename varies with the package name (a scoped package packs as

@@ -2,7 +2,7 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "KeelStacksOnly",
+      "Sid": "BareboatStacksOnly",
       "Effect": "Allow",
       "Action": [
         "cloudformation:CreateStack",
@@ -13,10 +13,10 @@
         "cloudformation:DescribeStackResources",
         "cloudformation:GetTemplateSummary"
       ],
-      "Resource": "arn:aws:cloudformation:*:*:stack/keel-*/*"
+      "Resource": "arn:aws:cloudformation:*:*:stack/bareboat-*/*"
     },
     {
-      "Sid": "KeelNamedResources",
+      "Sid": "BareboatNamedResources",
       "Effect": "Allow",
       "Action": [
         "dynamodb:CreateTable",
@@ -29,10 +29,10 @@
         "dynamodb:Query",
         "dynamodb:Scan"
       ],
-      "Resource": "arn:aws:dynamodb:*:*:table/keel"
+      "Resource": "arn:aws:dynamodb:*:*:table/bareboat"
     },
     {
-      "Sid": "KeelParameters",
+      "Sid": "BareboatParameters",
       "Effect": "Allow",
       "Action": [
         "ssm:PutParameter",
@@ -42,10 +42,10 @@
         "ssm:DeleteParameter",
         "ssm:AddTagsToResource"
       ],
-      "Resource": "arn:aws:ssm:*:*:parameter/keel/*"
+      "Resource": "arn:aws:ssm:*:*:parameter/bareboat/*"
     },
     {
-      "Sid": "KeelBuilds",
+      "Sid": "BareboatBuilds",
       "Effect": "Allow",
       "Action": [
         "codebuild:CreateProject",
@@ -55,10 +55,10 @@
         "codebuild:StartBuild",
         "codebuild:BatchGetBuilds"
       ],
-      "Resource": "arn:aws:codebuild:*:*:project/keel-*"
+      "Resource": "arn:aws:codebuild:*:*:project/bareboat-*"
     },
     {
-      "Sid": "KeelRolesForProvisionedServices",
+      "Sid": "BareboatRolesForProvisionedServices",
       "Effect": "Allow",
       "Action": [
         "iam:CreateRole",
@@ -74,10 +74,10 @@
         "iam:ListRolePolicies",
         "iam:ListAttachedRolePolicies"
       ],
-      "Resource": "arn:aws:iam::*:role/keel-*"
+      "Resource": "arn:aws:iam::*:role/bareboat-*"
     },
     {
-      "Sid": "KeelRuntimeServices",
+      "Sid": "BareboatRuntimeServices",
       "Effect": "Allow",
       "Action": [
         "ecr:CreateRepository",
@@ -131,7 +131,7 @@
       "Resource": "*"
     },
     {
-      "Sid": "KeelNetworkAndDiscoveryReadOnly",
+      "Sid": "BareboatNetworkAndDiscoveryReadOnly",
       "Effect": "Allow",
       "Action": [
         "sts:GetCallerIdentity",

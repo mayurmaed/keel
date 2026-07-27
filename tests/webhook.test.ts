@@ -6,8 +6,8 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { makeHandler } = require("../infra/webhook-handler.cjs");
 
-process.env.TABLE = "keel";
-process.env.PROJECT = "keel-build";
+process.env.TABLE = "bareboat";
+process.env.PROJECT = "bareboat-build";
 
 const appItem = {
   Item: {
@@ -55,7 +55,7 @@ describe("webhook handler", () => {
     const res = await makeHandler(deps)(event(push));
     expect(res.statusCode).toBe(202);
     const start = calls.find((c) => c.cmd === "StartBuildCommand")!;
-    expect(start.input.projectName).toBe("keel-build");
+    expect(start.input.projectName).toBe("bareboat-build");
     const envs = Object.fromEntries(
       start.input.environmentVariablesOverride.map((e: any) => [e.name, e.value]),
     );

@@ -13,7 +13,7 @@ import { formatProjects, readProjects } from "./aws/projects.js";
 
 async function printLocalApps(): Promise<void> {
   const lines = await listLocal();
-  console.log(lines.length ? lines.join("\n") : "no keel apps running");
+  console.log(lines.length ? lines.join("\n") : "no bareboat apps running");
 }
 
 // Single source of truth for the version — `npm version` bumps package.json only.
@@ -21,21 +21,21 @@ async function printLocalApps(): Promise<void> {
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
 export function buildProgram(): Command {
-  const program = new Command("keel")
+  const program = new Command("bareboat")
     .version(version)
     .description("Deploy apps to your own AWS account (or local Docker)");
 
   program
     .command("new")
-    .description("register the app in the current directory (writes keel.json)")
+    .description("register the app in the current directory (writes bareboat.json)")
     .option("--name <name>")
     .option("--port <port>")
     .option("--target <target>", '"local" or "aws"')
     .option("--repo <url>")
     .option("--branch <branch>")
-    .option("--db <name>", "link a keel database (DATABASE_URL injected on deploy)")
+    .option("--db <name>", "link a bareboat database (DATABASE_URL injected on deploy)")
     .option("--db-ssl-root-cert <path>", "in-container CA bundle path; switches DATABASE_URL to sslmode=verify-full")
-    .option("--auth <name>", "link a keel auth service (GOTRUE_URL + JWT_SECRET injected on deploy)")
+    .option("--auth <name>", "link a bareboat auth service (GOTRUE_URL + JWT_SECRET injected on deploy)")
     .option("--project <project>")
     .action(async (opts) => {
       await newCommand(opts);
@@ -58,7 +58,7 @@ export function buildProgram(): Command {
 
   program
     .command("list")
-    .description("show running keel apps")
+    .description("show running bareboat apps")
     .action(printLocalApps);
 
   program
@@ -100,7 +100,7 @@ export function buildProgram(): Command {
 
   program
     .command("env")
-    .description("manage app env vars: keel env set K=V ... | unset K ... | list")
+    .description("manage app env vars: bareboat env set K=V ... | unset K ... | list")
     .argument("<action>", "set | unset | list")
     .argument("[pairs...]")
     .action(async (action: string, pairs: string[]) => {
@@ -115,9 +115,9 @@ export function buildProgram(): Command {
   program
     .command("status")
     .description("recent deploys (aws) or running container (local); --all for every project on this machine")
-    .option("--all", "every keel project on this machine (works from any directory)")
+    .option("--all", "every bareboat project on this machine (works from any directory)")
     .action(async (opts: { all?: boolean }) => {
-      // --all reads the machine-level registry, so it must not require a keel.json.
+      // --all reads the machine-level registry, so it must not require a bareboat.json.
       if (opts.all) {
         console.log(formatProjects(readProjects()).join("\n"));
         return;
@@ -132,12 +132,12 @@ export function buildProgram(): Command {
 
   program
     .command("setup")
-    .description("one-time: deploy the keel control plane into your AWS account")
+    .description("one-time: deploy the bareboat control plane into your AWS account")
     .option("--region <region>")
     .option("--domain <domain>", "base domain for app URLs (stored now, wired in Plan B2)")
     .option("--ingress <mode>", '"port" or "domain"')
     .option("--github-token <token>", "token for cloning private repos (stored in SSM)")
-    .option("--profile <profile>", "AWS CLI profile to use (remembered for all keel commands)")
+    .option("--profile <profile>", "AWS CLI profile to use (remembered for all bareboat commands)")
     .option("--yes", "non-interactive: accept defaults")
     .action((opts) => setupCommand(opts));
 
@@ -162,7 +162,7 @@ export function buildProgram(): Command {
 
   const auth = program.command("auth").description("managed authentication (GoTrue) services");
   auth.command("create <name>")
-    .requiredOption("--db <db>", "the keel database to store users in")
+    .requiredOption("--db <db>", "the bareboat database to store users in")
     .option("--project <project>")
     .action((name: string, opts: { db: string; project?: string }) => authCreate(name, opts));
   auth.command("list").action(() => authList());

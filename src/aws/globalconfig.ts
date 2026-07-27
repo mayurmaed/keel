@@ -25,11 +25,11 @@ export interface GlobalConfig {
   controlPlane?: ControlPlane;
 }
 
-export const GLOBAL_CONFIG_PATH = join(homedir(), ".keel", "config.json");
+export const GLOBAL_CONFIG_PATH = join(homedir(), ".bareboat", "config.json");
 
 export function readGlobalConfig(path = GLOBAL_CONFIG_PATH): GlobalConfig {
   if (!existsSync(path)) {
-    throw new Error("keel is not set up on this machine — run `keel setup` first");
+    throw new Error("bareboat is not set up on this machine — run `bareboat setup` first");
   }
   return JSON.parse(readFileSync(path, "utf8")) as GlobalConfig;
 }

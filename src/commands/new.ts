@@ -13,7 +13,7 @@ export async function newCommand(
       message: "Deploy target",
       choices: [
         { name: "local (Docker on this machine)", value: "local" },
-        { name: "aws (your AWS account — needs keel setup)", value: "aws" },
+        { name: "aws (your AWS account — needs bareboat setup)", value: "aws" },
       ],
     })) as AppConfig["target"]);
   const repo =
@@ -35,5 +35,5 @@ export async function newCommand(
   const errs = validateAppConfig(cfg);
   if (errs.length) throw new Error(errs.join("; "));
   saveAppConfig(dir, cfg);
-  console.log(`wrote ${CONFIG_FILE} for "${name}" — deploy with: keel deploy`);
+  console.log(`wrote ${CONFIG_FILE} for "${name}" — deploy with: bareboat deploy`);
 }

@@ -10,10 +10,10 @@ export interface IngressInfo {
   httpsListenerArn?: string;
 }
 
-const INGRESS_STACK = "keel-ingress";
+const INGRESS_STACK = "bareboat-ingress";
 
 export async function ensureIngress(clients: Pick<AwsClients, "cfn">, gcfg: GlobalConfig): Promise<IngressInfo> {
-  if (!gcfg.controlPlane) throw new Error("run `keel setup` first");
+  if (!gcfg.controlPlane) throw new Error("run `bareboat setup` first");
   const template = readFileSync(new URL("../../infra/ingress.yaml", import.meta.url), "utf8");
   const params: Record<string, string> = {
     Mode: gcfg.ingress,

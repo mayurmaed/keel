@@ -14,32 +14,32 @@ npm install && npm run build
 cd sample-app
 ```
 
-`sample-app/keel.json` is already committed with `target: local`, `port:
+`sample-app/bareboat.json` is already committed with `target: local`, `port:
 3000`. If port 3000 is already bound on the recording machine, either free it
-or pick a different port for `--port` below and also `keel env set
+or pick a different port for `--port` below and also `bareboat env set
 PORT=<port>` so the in-container app listens on the same port Docker maps
 (see **Verified** note on step 3 — the local target maps `host:container`
 1:1 on `cfg.port`, so both must match).
 
 ## Recording
 
-### 1. `keel new` — register the app
+### 1. `bareboat new` — register the app
 
 ```bash
-keel new --name hello --port 3000 --target local
+bareboat new --name hello --port 3000 --target local
 ```
 **Expected output:**
 ```
-wrote keel.json for "hello" — deploy with: keel deploy
+wrote bareboat.json for "hello" — deploy with: bareboat deploy
 ```
-**Caption:** "One command to register an app — writes keel.json."
+**Caption:** "One command to register an app — writes bareboat.json."
 
 **Verified:** ran exactly this; output matches.
 
-### 2. `keel deploy` — build and run
+### 2. `bareboat deploy` — build and run
 
 ```bash
-keel deploy
+bareboat deploy
 ```
 **Expected output:** Docker BuildKit progress (image layers, mostly `CACHED`
 after the first run), then:
@@ -51,16 +51,16 @@ live: http://localhost:3000
 **Verified:** ran exactly this (on a free port); build + run succeeded,
 final line was `live: http://localhost:<port>`.
 
-### 3. `keel status` — see it running
+### 3. `bareboat status` — see it running
 
 ```bash
-keel status
+bareboat status
 ```
 **Expected output:**
 ```
-keel-hello	Up X seconds	0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+bareboat-hello	Up X seconds	0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
 ```
-**Caption:** "keel status shows the running container — same command works
+**Caption:** "bareboat status shows the running container — same command works
 against AWS."
 
 **Verified:** ran exactly this; output format matches (container name,
@@ -73,16 +73,16 @@ curl http://localhost:3000
 ```
 **Expected output:**
 ```
-hello from keel
+hello from bareboat
 ```
 **Caption:** "It's live — a real request, a real response."
 
-**Verified:** ran exactly this; got `hello from keel`.
+**Verified:** ran exactly this; got `hello from bareboat`.
 
-### 5. `keel logs` — tail container logs
+### 5. `bareboat logs` — tail container logs
 
 ```bash
-keel logs
+bareboat logs
 ```
 **Expected output:**
 ```
@@ -93,10 +93,10 @@ listening on 3000
 **Verified:** ran exactly this (without `-f`, which streams and blocks —
 fine live on camera, cut it short with Ctrl-C for the recording).
 
-### 6. `keel destroy` — clean teardown
+### 6. `bareboat destroy` — clean teardown
 
 ```bash
-keel destroy
+bareboat destroy
 ```
 **Expected output:**
 ```
@@ -111,11 +111,11 @@ destroyed hello
 ```bash
 # record (asciinema not installed on this machine — install before recording)
 brew install asciinema
-asciinema rec demo/keel-demo.cast --command "bash demo/run.sh" --idle-time-limit 2
+asciinema rec demo/bareboat-demo.cast --command "bash demo/run.sh" --idle-time-limit 2
 
 # convert the .cast to a GIF for READMEs/social posts
 brew install agg
-agg demo/keel-demo.cast demo/keel-demo.gif
+agg demo/bareboat-demo.cast demo/bareboat-demo.gif
 ```
 
 `demo/run.sh` (not included — write a thin wrapper that runs steps 1–6 above

@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: keel per-auth GoTrue runtime - target group, fargate service, routing (port or domain mode)
+Description: bareboat per-auth GoTrue runtime - target group, fargate service, routing (port or domain mode)
 
 Parameters:
   AuthName:
@@ -58,7 +58,7 @@ Resources:
   TaskSg:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub "keel auth ${AuthName} - ingress only from the ALB"
+      GroupDescription: !Sub "bareboat auth ${AuthName} - ingress only from the ALB"
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -66,7 +66,7 @@ Resources:
           ToPort: 9999
           SourceSecurityGroupId: !Ref AlbSgId
       Tags:
-        - Key: "keel:project"
+        - Key: "bareboat:project"
           Value: !Ref Project
 
   DbIngress:
@@ -78,12 +78,12 @@ Resources:
       FromPort: 5432
       ToPort: 5432
       SourceSecurityGroupId: !Ref TaskSg
-      Description: !Sub "keel:auth:${AuthName}"
+      Description: !Sub "bareboat:auth:${AuthName}"
 
   TaskDef:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: !Sub "keel-auth-${AuthName}"
+      Family: !Sub "bareboat-auth-${AuthName}"
       NetworkMode: awsvpc
       RequiresCompatibilities: [FARGATE]
       Cpu: "256"
@@ -189,7 +189,7 @@ Resources:
     DependsOn: PortListener
     Properties:
       Cluster: !Ref Cluster
-      ServiceName: !Sub "keel-auth-${AuthName}"
+      ServiceName: !Sub "bareboat-auth-${AuthName}"
       TaskDefinition: !Ref TaskDef
       DesiredCount: 1
       LaunchType: FARGATE
@@ -210,7 +210,7 @@ Resources:
     DependsOn: DomainRule
     Properties:
       Cluster: !Ref Cluster
-      ServiceName: !Sub "keel-auth-${AuthName}"
+      ServiceName: !Sub "bareboat-auth-${AuthName}"
       TaskDefinition: !Ref TaskDef
       DesiredCount: 1
       LaunchType: FARGATE

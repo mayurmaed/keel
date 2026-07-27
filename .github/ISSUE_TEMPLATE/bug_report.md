@@ -10,8 +10,8 @@ assignees: ''
 A clear, concise description of what's wrong.
 
 **To reproduce**
-Steps to reproduce, including the exact `keel` command(s) run and relevant
-`keel.json` contents.
+Steps to reproduce, including the exact `bareboat` command(s) run and relevant
+`bareboat.json` contents.
 
 **Expected behavior**
 What you expected to happen.
@@ -20,11 +20,11 @@ What you expected to happen.
 What actually happened — include full error output / CLI logs.
 
 **Environment**
-- Keel version / commit:
+- Bareboat version / commit:
 - Node version:
 - Target (`local` or `aws`):
 - OS:
 
 **Additional context**
-Anything else relevant (AWS region, whether push-to-deploy or manual `keel
+Anything else relevant (AWS region, whether push-to-deploy or manual `bareboat
 deploy`, etc.).

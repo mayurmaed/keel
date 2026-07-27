@@ -13,7 +13,7 @@ export async function ensureAppStack(
   albPort: number,
   dbSgId?: string,
 ): Promise<{ url: string; taskSgId: string }> {
-  if (!gcfg.controlPlane) throw new Error("run `keel setup` first");
+  if (!gcfg.controlPlane) throw new Error("run `bareboat setup` first");
   const template = readFileSync(new URL("../../infra/app.yaml", import.meta.url), "utf8");
   const params: Record<string, string> = {
     AppName: app.name,
@@ -34,7 +34,7 @@ export async function ensureAppStack(
     HostedZoneId: gcfg.hostedZoneId ?? "",
     DbSgId: dbSgId ?? "",
   };
-  const out = await deployStack(clients.cfn, `keel-app-${app.name}`, template, params, {
+  const out = await deployStack(clients.cfn, `bareboat-app-${app.name}`, template, params, {
     tags: projectTags(app.project ?? app.name),
   });
   return { url: out.Url, taskSgId: out.TaskSgId };

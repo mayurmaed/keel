@@ -7,7 +7,7 @@ import type { IngressInfo } from "./ingress.js";
 import { deployStack, projectTags } from "./stack.js";
 
 export async function ensureJwtSecret(ssm: { send(c: any): Promise<any> }, name: string): Promise<string> {
-  const paramName = `/keel/auth/${name}/jwt-secret`;
+  const paramName = `/bareboat/auth/${name}/jwt-secret`;
   try {
     const res = await ssm.send(new GetParameterCommand({ Name: paramName, WithDecryption: true }));
     return res.Parameter.Value as string;
@@ -29,10 +29,10 @@ export async function ensureAuthStack(
   dbUrlParam: string,
   jwtSecretParam: string,
 ): Promise<{ url: string; taskSgId: string }> {
-  if (!gcfg.controlPlane) throw new Error("run `keel setup` first");
+  if (!gcfg.controlPlane) throw new Error("run `bareboat setup` first");
   const cp = gcfg.controlPlane;
   const template = readFileSync(new URL("../../infra/auth.yaml", import.meta.url), "utf8");
-  const out = await deployStack(clients.cfn, `keel-auth-${auth.name}`, template, {
+  const out = await deployStack(clients.cfn, `bareboat-auth-${auth.name}`, template, {
     AuthName: auth.name,
     Project: auth.project,
     Cluster: cp.clusterName,
