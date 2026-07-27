@@ -8,7 +8,7 @@ import {
 } from "@aws-sdk/client-ec2";
 import type { AwsClients } from "./clients.js";
 import type { GlobalConfig } from "./globalconfig.js";
-import { deployStack } from "./stack.js";
+import { deployStack, projectTags, SHARED_TAGS } from "./stack.js";
 
 export interface DbInstanceInfo {
   host: string;
@@ -19,7 +19,9 @@ export interface DbInstanceInfo {
 export async function ensureDbInstance(
   clients: Pick<AwsClients, "cfn" | "ssm">,
   gcfg: GlobalConfig,
-  opts: { stackName: string; instanceId: string; masterPasswordSsm: string; dbName?: string; backupDays?: number },
+  // ponytail: `project` omitted for the shared instance — one RDS instance backs many
+  // projects, so a keel:project tag on it would misattribute cost to whoever created it first.
+  opts: { stackName: string; instanceId: string; masterPasswordSsm: string; project?: string; dbName?: string; backupDays?: number },
 ): Promise<DbInstanceInfo> {
   if (!gcfg.controlPlane) throw new Error("run `keel setup` first");
 
@@ -41,7 +43,7 @@ export async function ensureDbInstance(
     Subnets: gcfg.controlPlane.subnetIds.join(","),
     DbName: opts.dbName ?? "",
     BackupDays: String(opts.backupDays ?? 7),
-  });
+  }, { tags: opts.project ? projectTags(opts.project) : SHARED_TAGS });
 
   return { host: out.Endpoint, dbSgId: out.DbSgId, masterPassword };
 }

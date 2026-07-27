@@ -6,7 +6,7 @@ import { PutParameterCommand } from "@aws-sdk/client-ssm";
 import { ListHostedZonesByNameCommand } from "@aws-sdk/client-route-53";
 import { makeClients, type AwsClients } from "../aws/clients.js";
 import { GLOBAL_CONFIG_PATH, writeGlobalConfig } from "../aws/globalconfig.js";
-import { deployStack } from "../aws/stack.js";
+import { deployStack, SHARED_TAGS } from "../aws/stack.js";
 
 export interface SetupOpts {
   region?: string;
@@ -90,7 +90,7 @@ export async function setupCommand(
     STACK,
     template,
     { WebhookCode: webhookCode },
-    { retryCreateFailure: isKmsGrantRolePropagationFailure },
+    { retryCreateFailure: isKmsGrantRolePropagationFailure, tags: SHARED_TAGS },
   );
 
   if (opts.githubToken) {

@@ -410,6 +410,15 @@ The deploy record in DynamoDB shows `failed`, and `keel status` reflects it.
 - **Running apps:** arrive in Plan B2 (Fargate tasks behind a shared load
   balancer). Nothing runs continuously yet in B1.
 
+**Per-project cost:** every stack keel creates is tagged `keel:managed=true`, and
+project-scoped stacks (apps, dedicated databases, auth) also carry
+`keel:project=<name>`. CloudFormation propagates both to the resources inside the
+stack, so per-project spend is a Cost Explorer query grouped by the `keel:project`
+tag — no keel-side cost tracking needed. Activate the two tags once under *Billing →
+Cost allocation tags* before they show up in Cost Explorer. Shared infrastructure
+(control plane, ingress ALB, the shared database instance) carries only
+`keel:managed` — it backs every project, so attributing it to one would be wrong.
+
 **Teardown** (removes all control-plane resources; keeps your code):
 
 ```bash
