@@ -27,6 +27,7 @@ Resources:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: keel-apps
+      EmptyOnDelete: true
 
   Cluster:
     Type: AWS::ECS::Cluster

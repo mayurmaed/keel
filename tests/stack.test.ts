@@ -124,4 +124,8 @@ describe("control-plane template", () => {
       "WebhookBase", "TaskExecRoleArn", "LogGroup", "WebhookCode",
     ]) expect(tpl).toContain(key);
   });
+
+  it("empties the shared ECR repository when the control plane is deleted", () => {
+    expect(tpl).toMatch(/Repo:\n    Type: AWS::ECR::Repository\n    Properties:\n      RepositoryName: keel-apps\n      EmptyOnDelete: true/);
+  });
 });

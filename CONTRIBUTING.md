@@ -5,7 +5,7 @@
 ```bash
 npm install
 npm run build   # tsc
-npm test        # vitest run — 118 tests, no AWS/network needed
+npm test        # vitest run — 137 tests, no AWS/network needed
 ```
 
 Tests are unit-level and mock AWS SDK clients — none of them touch a real AWS
