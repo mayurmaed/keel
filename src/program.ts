@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { createRequire } from "node:module";
 import { confirm } from "@inquirer/prompts";
 import { loadAppConfig } from "./config.js";
 import { deployLocal, listLocal, logsLocal, destroyLocal } from "./targets/local.js";
@@ -14,9 +15,13 @@ async function printLocalApps(): Promise<void> {
   console.log(lines.length ? lines.join("\n") : "no keel apps running");
 }
 
+// Single source of truth for the version — `npm version` bumps package.json only.
+// Resolves to <pkg>/package.json from dist/program.js and to the repo root under tsx.
+const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+
 export function buildProgram(): Command {
   const program = new Command("keel")
-    .version("0.1.0")
+    .version(version)
     .description("Deploy apps to your own AWS account (or local Docker)");
 
   program

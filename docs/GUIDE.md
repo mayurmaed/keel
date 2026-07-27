@@ -148,6 +148,31 @@ sequenceDiagram
 
 ### One-time setup
 
+Install the CLI:
+
+```bash
+npm install -g keel     # or run it without installing: npx keel <command>
+keel --version
+```
+
+**Credentials — do not use root keys.** Create a dedicated IAM *user* (or better, an
+IAM Identity Center / SSO profile) for keel and give it only the permissions it needs.
+[`docs/iam-policy.json`](iam-policy.json) is a least-privilege starting point: it scopes
+CloudFormation to `keel-*` stacks, DynamoDB to the `keel` table, SSM to `/keel/*`,
+CodeBuild to `keel-*` projects, and `iam:*Role` to `keel-*` roles. Actions that AWS does
+not support resource-level permissions for (most `Describe*`/`List*`) stay on `*`.
+
+```bash
+aws iam create-user --user-name keel-cli
+aws iam put-user-policy --user-name keel-cli \
+  --policy-name keel-cli --policy-document file://docs/iam-policy.json
+```
+
+Prefer short-lived credentials where you can — with IAM Identity Center, `aws sso login
+--profile keel` and keel picks the profile up like any other. If you do use an access
+key, rotate it and never commit it; keel only ever reads credentials through the AWS SDK
+chain and never stores them itself.
+
 ```bash
 # 1. Point the AWS CLI at the account Keel should use (a dedicated profile keeps
 #    it separate from your other AWS work).
