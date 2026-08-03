@@ -148,6 +148,34 @@ sequenceDiagram
 
 ### One-time setup
 
+Install the CLI:
+
+```bash
+npm install -g @mayurmaed/keel     # the command it installs is just `keel`
+keel --version
+
+# or run it without installing:
+npx @mayurmaed/keel --version
+```
+
+**Credentials — do not use root keys.** Create a dedicated IAM *user* (or better, an
+IAM Identity Center / SSO profile) for keel and give it only the permissions it needs.
+[`docs/iam-policy.json`](iam-policy.json) is a least-privilege starting point: it scopes
+CloudFormation to `keel-*` stacks, DynamoDB to the `keel` table, SSM to `/keel/*`,
+CodeBuild to `keel-*` projects, and `iam:*Role` to `keel-*` roles. Actions that AWS does
+not support resource-level permissions for (most `Describe*`/`List*`) stay on `*`.
+
+```bash
+aws iam create-user --user-name keel-cli
+aws iam put-user-policy --user-name keel-cli \
+  --policy-name keel-cli --policy-document file://docs/iam-policy.json
+```
+
+Prefer short-lived credentials where you can — with IAM Identity Center, `aws sso login
+--profile keel` and keel picks the profile up like any other. If you do use an access
+key, rotate it and never commit it; keel only ever reads credentials through the AWS SDK
+chain and never stores them itself.
+
 ```bash
 # 1. Point the AWS CLI at the account Keel should use (a dedicated profile keeps
 #    it separate from your other AWS work).
@@ -410,6 +438,37 @@ The deploy record in DynamoDB shows `failed`, and `keel status` reflects it.
 - **Running apps:** arrive in Plan B2 (Fargate tasks behind a shared load
   balancer). Nothing runs continuously yet in B1.
 
+### Every project on this machine
+
+`keel` commands are per-repo, but apps, databases and auth services also get
+recorded in a machine-level registry at `~/.keel/projects.json`. `keel status
+--all` reads it and works from any directory — no `keel.json` needed:
+
+```bash
+keel status --all
+# acme  (ap-south-1)
+#   app   web                   keel-app-web              http://alb.example:8001
+#   db    maindb                keel-db-shared            rds.example:5432
+#   auth  login                 keel-auth-login           http://alb.example:8100
+# blog  (us-east-1)
+#   app   site                  keel-app-site             /Users/x/blog
+```
+
+`keel deploy`, `db create` and `auth create` add entries; the matching `destroy`
+commands remove them. The registry is only an index — DynamoDB stays the source of
+truth — so if the file is deleted or corrupted, keel keeps working and re-populates
+it on the next deploy. Resources provisioned before this feature existed appear the
+first time you redeploy them. Set `KEEL_HOME` to point the registry somewhere else.
+
+**Per-project cost:** every stack keel creates is tagged `keel:managed=true`, and
+project-scoped stacks (apps, dedicated databases, auth) also carry
+`keel:project=<name>`. CloudFormation propagates both to the resources inside the
+stack, so per-project spend is a Cost Explorer query grouped by the `keel:project`
+tag — no keel-side cost tracking needed. Activate the two tags once under *Billing →
+Cost allocation tags* before they show up in Cost Explorer. Shared infrastructure
+(control plane, ingress ALB, the shared database instance) carries only
+`keel:managed` — it backs every project, so attributing it to one would be wrong.
+
 **Teardown** (removes all control-plane resources; keeps your code):
 
 ```bash
@@ -426,6 +485,7 @@ repo contents and `/keel/*` parameters separately if you want a clean slate.
 | Thing | Location |
 |---|---|
 | CLI config | `~/.keel/config.json` |
+| Project registry (`status --all`) | `~/.keel/projects.json` |
 | App + deploy records | DynamoDB table `keel` |
 | Webhook secret | SSM `/keel/<app>/webhook-secret` |
 | App env vars | SSM `/keel/<app>/env/<KEY>` |

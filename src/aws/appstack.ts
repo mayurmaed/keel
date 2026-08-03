@@ -3,7 +3,7 @@ import type { AwsClients } from "./clients.js";
 import type { GlobalConfig } from "./globalconfig.js";
 import type { AppRecord } from "./registry.js";
 import type { IngressInfo } from "./ingress.js";
-import { deployStack } from "./stack.js";
+import { deployStack, projectTags } from "./stack.js";
 
 export async function ensureAppStack(
   clients: Pick<AwsClients, "cfn">,
@@ -34,6 +34,8 @@ export async function ensureAppStack(
     HostedZoneId: gcfg.hostedZoneId ?? "",
     DbSgId: dbSgId ?? "",
   };
-  const out = await deployStack(clients.cfn, `keel-app-${app.name}`, template, params);
+  const out = await deployStack(clients.cfn, `keel-app-${app.name}`, template, params, {
+    tags: projectTags(app.project ?? app.name),
+  });
   return { url: out.Url, taskSgId: out.TaskSgId };
 }

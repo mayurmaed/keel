@@ -8,6 +8,7 @@ import { makeClients, type AwsClients } from "../aws/clients.js";
 import { readGlobalConfig, type GlobalConfig } from "../aws/globalconfig.js";
 import { ensureIngress } from "../aws/ingress.js";
 import { ensureAppStack } from "../aws/appstack.js";
+import { recordResource, forgetResource } from "../aws/projects.js";
 import {
   ensureWebhookSecret, getApp, getDb, getAuth, getDeploy, listApps, listDeploys, listEnvVars, newDeployId,
   putApp, putDeploy, setEnvVar, unsetEnvVar, type DbRecord, type RegistryDeps,
@@ -17,6 +18,8 @@ export interface AwsIo {
   gcfg?: GlobalConfig;
   clients?: AwsClients;
   sleep?: (ms: number) => Promise<void>;
+  /** Override the machine-level project registry path (tests). */
+  projectsPath?: string;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -119,6 +122,16 @@ export async function deployAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> {
     }
     if (status === "live") {
       const appStack = await ensureAppStack(clients, gcfg, app, ingress, app.albPort ?? 8001, dbRec?.dbSgId);
+      recordResource({
+        kind: "app",
+        name: app.name,
+        project: cfg.project ?? app.name,
+        region: gcfg.region,
+        stack: `keel-app-${app.name}`,
+        repoPath: process.cwd(),
+        url: appStack.url,
+        createdAt: new Date().toISOString(),
+      }, io.projectsPath);
       console.log(`live: ${appStack.url}`);
       return;
     }
@@ -240,6 +253,7 @@ export async function destroyAws(cfg: AppConfig, io: AwsIo = {}): Promise<void> 
     nextToken = params.NextToken;
   } while (nextToken);
 
+  forgetResource("app", cfg.name, io.projectsPath);
   console.log(`destroyed ${cfg.name}: deleted stack ${stackName}, ${(items.Items ?? []).length} records, ${recordCount} secrets`);
   console.log(`(shared ingress stack and ECR images left intact)`);
 }

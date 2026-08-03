@@ -14,7 +14,19 @@ type Cfn = Pick<CloudFormationClient, "send">;
 
 export interface DeployStackOptions {
   retryCreateFailure?: (reasons: string[]) => boolean;
+  /** Stack-level tags. CloudFormation propagates these to every taggable resource
+   *  in the stack, so this is the only place tagging needs to happen. */
+  tags?: Record<string, string>;
 }
+
+/** Tags for a project-scoped stack (app, db, auth) — `keel:project` drives
+ *  per-project cost attribution in Cost Explorer. */
+export function projectTags(project: string): Record<string, string> {
+  return { "keel:managed": "true", "keel:project": project };
+}
+
+/** Tags for stacks shared across every project (control plane, ingress). */
+export const SHARED_TAGS: Record<string, string> = { "keel:managed": "true" };
 
 export async function stackOutputs(cfn: Cfn, name: string): Promise<Record<string, string>> {
   const res = await cfn.send(new DescribeStacksCommand({ StackName: name }));
@@ -52,7 +64,8 @@ export async function deployStack(
   options: DeployStackOptions = {},
 ): Promise<Record<string, string>> {
   const Parameters = Object.entries(params).map(([k, v]) => ({ ParameterKey: k, ParameterValue: v }));
-  const common = { StackName: name, TemplateBody: templateBody, Parameters, Capabilities: ["CAPABILITY_NAMED_IAM"] as Capability[] };
+  const Tags = Object.entries(options.tags ?? {}).map(([Key, Value]) => ({ Key, Value }));
+  const common = { StackName: name, TemplateBody: templateBody, Parameters, Tags, Capabilities: ["CAPABILITY_NAMED_IAM"] as Capability[] };
   const client = cfn as CloudFormationClient;
   if (await stackExists(cfn, name)) {
     try {

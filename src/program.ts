@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { createRequire } from "node:module";
 import { confirm } from "@inquirer/prompts";
 import { loadAppConfig } from "./config.js";
 import { deployLocal, listLocal, logsLocal, destroyLocal } from "./targets/local.js";
@@ -8,15 +9,20 @@ import { envCommand } from "./commands/env.js";
 import { setupCommand } from "./commands/setup.js";
 import { dbCreate, dbList, dbUrl, dbAllowIp, dbDestroy } from "./commands/db.js";
 import { authCreate, authList, authUrl, authDestroy } from "./commands/auth.js";
+import { formatProjects, readProjects } from "./aws/projects.js";
 
 async function printLocalApps(): Promise<void> {
   const lines = await listLocal();
   console.log(lines.length ? lines.join("\n") : "no keel apps running");
 }
 
+// Single source of truth for the version — `npm version` bumps package.json only.
+// Resolves to <pkg>/package.json from dist/program.js and to the repo root under tsx.
+const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+
 export function buildProgram(): Command {
   const program = new Command("keel")
-    .version("0.1.0")
+    .version(version)
     .description("Deploy apps to your own AWS account (or local Docker)");
 
   program
@@ -108,8 +114,14 @@ export function buildProgram(): Command {
 
   program
     .command("status")
-    .description("recent deploys (aws) or running container (local)")
-    .action(async () => {
+    .description("recent deploys (aws) or running container (local); --all for every project on this machine")
+    .option("--all", "every keel project on this machine (works from any directory)")
+    .action(async (opts: { all?: boolean }) => {
+      // --all reads the machine-level registry, so it must not require a keel.json.
+      if (opts.all) {
+        console.log(formatProjects(readProjects()).join("\n"));
+        return;
+      }
       const cfg = loadAppConfig(process.cwd());
       if (cfg.target === "aws") {
         await statusAws(cfg);

@@ -1,6 +1,6 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { deployStack } from "../src/aws/stack";
+import { deployStack, projectTags, SHARED_TAGS } from "../src/aws/stack";
 
 const { waitUntilStackCreateComplete, waitUntilStackDeleteComplete } = vi.hoisted(() => ({
   waitUntilStackCreateComplete: vi.fn(),
@@ -113,6 +113,60 @@ describe("deployStack", () => {
     const out = await deployStack(cfn, "keel-control-plane", "tpl", {});
     expect(calls).toContain("UpdateStackCommand");
     expect(out.TableName).toBe("keel");
+  });
+});
+
+describe("stack tags (#17)", () => {
+  function capturingCfn(exists: boolean) {
+    const inputs: Record<string, any>[] = [];
+    const calls: string[] = [];
+    return {
+      inputs,
+      cfn: {
+        send: async (c: any) => {
+          const cmd = c.constructor.name;
+          calls.push(cmd);
+          if (cmd === "DescribeStacksCommand") {
+            if (!exists && !calls.includes("CreateStackCommand")) {
+              throw Object.assign(new Error("Stack does not exist"), { name: "ValidationError" });
+            }
+            return { Stacks: [{ Outputs: [{ OutputKey: "TableName", OutputValue: "keel" }] }] };
+          }
+          if (cmd === "CreateStackCommand" || cmd === "UpdateStackCommand") inputs.push(c.input);
+          // Tags are captured above before this short-circuits the update waiter.
+          if (cmd === "UpdateStackCommand") throw new Error("No updates are to be performed.");
+          return {};
+        },
+      } as any,
+    };
+  }
+
+  it("sends project tags on create so CloudFormation propagates them to every resource", async () => {
+    const { inputs, cfn } = capturingCfn(false);
+    await deployStack(cfn, "keel-app-web", "tpl", {}, { tags: projectTags("acme") });
+    expect(inputs[0].Tags).toEqual([
+      { Key: "keel:managed", Value: "true" },
+      { Key: "keel:project", Value: "acme" },
+    ]);
+  });
+
+  it("tags updates too, so existing stacks pick the tags up on next deploy", async () => {
+    const { inputs, cfn } = capturingCfn(true);
+    await deployStack(cfn, "keel-app-web", "tpl", {}, { tags: projectTags("acme") });
+    expect(inputs[0].Tags).toContainEqual({ Key: "keel:project", Value: "acme" });
+  });
+
+  it("tags shared stacks as keel-managed without a project attribution", async () => {
+    const { inputs, cfn } = capturingCfn(false);
+    await deployStack(cfn, "keel-ingress", "tpl", {}, { tags: SHARED_TAGS });
+    expect(inputs[0].Tags).toEqual([{ Key: "keel:managed", Value: "true" }]);
+    expect(inputs[0].Tags.map((t: any) => t.Key)).not.toContain("keel:project");
+  });
+
+  it("sends an empty tag list when no tags are configured", async () => {
+    const { inputs, cfn } = capturingCfn(false);
+    await deployStack(cfn, "keel-ingress", "tpl", {});
+    expect(inputs[0].Tags).toEqual([]);
   });
 });
 

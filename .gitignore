@@ -4,3 +4,4 @@ dist/
 .plandb.db
 .superpowers/
 AGENTS.md
+*.tgz
