@@ -10,7 +10,7 @@ let dir: string;
 let path: string;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "keel-projects-"));
+  dir = mkdtempSync(join(tmpdir(), "bareboat-projects-"));
   path = join(dir, "projects.json");
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -18,7 +18,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 function res(over: Partial<ProjectResource> = {}): ProjectResource {
   return {
     kind: "app", name: "web", project: "acme", region: "ap-south-1",
-    stack: "keel-app-web", createdAt: "2026-07-27T00:00:00.000Z", ...over,
+    stack: "bareboat-app-web", createdAt: "2026-07-27T00:00:00.000Z", ...over,
   };
 }
 
@@ -38,7 +38,7 @@ describe("project registry (#18)", () => {
 
   it("keeps same-named resources of different kinds apart", () => {
     recordResource(res({ kind: "app", name: "shared" }), path);
-    recordResource(res({ kind: "db", name: "shared", stack: "keel-db-shared" }), path);
+    recordResource(res({ kind: "db", name: "shared", stack: "bareboat-db-shared" }), path);
     expect(readProjects(path)).toHaveLength(2);
 
     forgetResource("db", "shared", path);
@@ -96,15 +96,15 @@ describe("project registry (#18)", () => {
 
 describe("status --all output", () => {
   it("explains what to do when nothing is recorded", () => {
-    expect(formatProjects([]).join("\n")).toMatch(/no keel resources recorded/);
+    expect(formatProjects([]).join("\n")).toMatch(/no bareboat resources recorded/);
   });
 
   it("groups by project, orders app > db > auth, and points at the cost tag", () => {
     const lines = formatProjects([
-      res({ kind: "auth", name: "login", stack: "keel-auth-login", project: "acme" }),
-      res({ kind: "db", name: "maindb", stack: "keel-db-maindb", project: "acme" }),
-      res({ kind: "app", name: "web", stack: "keel-app-web", project: "acme" }),
-      res({ kind: "app", name: "site", stack: "keel-app-site", project: "blog" }),
+      res({ kind: "auth", name: "login", stack: "bareboat-auth-login", project: "acme" }),
+      res({ kind: "db", name: "maindb", stack: "bareboat-db-maindb", project: "acme" }),
+      res({ kind: "app", name: "web", stack: "bareboat-app-web", project: "acme" }),
+      res({ kind: "app", name: "site", stack: "bareboat-app-site", project: "blog" }),
     ]);
     const text = lines.join("\n");
     expect(lines[0]).toBe("acme  (ap-south-1)");
@@ -113,7 +113,7 @@ describe("status --all output", () => {
     expect(lines[3]).toMatch(/^ {2}auth {2}login/);
     // "blog" sorts after "acme" and starts its own group
     expect(text.indexOf("blog  (")).toBeGreaterThan(text.indexOf("acme  ("));
-    expect(text).toMatch(/keel:project tag/);
+    expect(text).toMatch(/bareboat:project tag/);
   });
 
   it("lists every region a project spans", () => {

@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for Keel
+about: Suggest an idea for Bareboat
 title: "[FEATURE] "
 labels: enhancement
 assignees: ''

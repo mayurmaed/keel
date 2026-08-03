@@ -14,7 +14,7 @@ function fake(answers: (cmd: string, input: any) => unknown) {
     calls.push({ cmd: c.constructor.name, input: c.input });
     return answers(c.constructor.name, c.input) ?? {};
   };
-  return { calls, deps: { ddb: { send }, ssm: { send }, table: "keel" } };
+  return { calls, deps: { ddb: { send }, ssm: { send }, table: "bareboat" } };
 }
 
 const app: AppRecord = {
@@ -61,18 +61,18 @@ describe("registry", () => {
     const secret = await ensureWebhookSecret(deps, "web");
     expect(secret).toMatch(/^[0-9a-f]{64}$/);
     const put = calls.find((c) => c.cmd === "PutParameterCommand")!;
-    expect(put.input.Name).toBe("/keel/web/webhook-secret");
+    expect(put.input.Name).toBe("/bareboat/web/webhook-secret");
     expect(put.input.Type).toBe("SecureString");
   });
 
   it("env vars round-trip through SSM paths", async () => {
     const { calls, deps } = fake((cmd) =>
       cmd === "GetParametersByPathCommand"
-        ? { Parameters: [{ Name: "/keel/web/env/API_KEY", Value: "abc" }] }
+        ? { Parameters: [{ Name: "/bareboat/web/env/API_KEY", Value: "abc" }] }
         : {},
     );
     await setEnvVar(deps, "web", "API_KEY", "abc");
-    expect(calls[0].input).toMatchObject({ Name: "/keel/web/env/API_KEY", Value: "abc", Type: "SecureString", Overwrite: true });
+    expect(calls[0].input).toMatchObject({ Name: "/bareboat/web/env/API_KEY", Value: "abc", Type: "SecureString", Overwrite: true });
     expect(await listEnvVars(deps, "web")).toEqual({ API_KEY: "abc" });
   });
 
@@ -81,8 +81,8 @@ describe("registry", () => {
     const { calls, deps } = fake((cmd) => {
       if (cmd === "GetParametersByPathCommand") {
         callCount++;
-        if (callCount === 1) return { Parameters: [{ Name: "/keel/web/env/A", Value: "1" }], NextToken: "t1" };
-        return { Parameters: [{ Name: "/keel/web/env/B", Value: "2" }] };
+        if (callCount === 1) return { Parameters: [{ Name: "/bareboat/web/env/A", Value: "1" }], NextToken: "t1" };
+        return { Parameters: [{ Name: "/bareboat/web/env/B", Value: "2" }] };
       }
       return {};
     });
@@ -144,7 +144,7 @@ describe("registry", () => {
 
 const auth: AuthRecord = {
   name: "appauth", db: "appdb", project: "appauth", host: "alb.example", port: 8100,
-  stack: "keel-auth-appauth", taskSgId: "sg-auth", url: "http://alb.example:8100", createdAt: "t",
+  stack: "bareboat-auth-appauth", taskSgId: "sg-auth", url: "http://alb.example:8100", createdAt: "t",
 };
 
 describe("auth registry", () => {

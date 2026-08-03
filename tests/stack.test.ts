@@ -19,9 +19,9 @@ beforeEach(() => {
 function fakeCfn(opts: { exists: boolean; noUpdates?: boolean }) {
   const calls: string[] = [];
   const stack = {
-    StackName: "keel-control-plane",
+    StackName: "bareboat-control-plane",
     StackStatus: opts.exists ? "UPDATE_COMPLETE" : "CREATE_COMPLETE",
-    Outputs: [{ OutputKey: "TableName", OutputValue: "keel" }],
+    Outputs: [{ OutputKey: "TableName", OutputValue: "bareboat" }],
   };
   return {
     calls,
@@ -57,7 +57,7 @@ describe("deployStack", () => {
           if (!calls.includes("CreateStackCommand")) {
             throw Object.assign(new Error("Stack does not exist"), { name: "ValidationError" });
           }
-          return { Stacks: [{ Outputs: [{ OutputKey: "TableName", OutputValue: "keel" }] }] };
+          return { Stacks: [{ Outputs: [{ OutputKey: "TableName", OutputValue: "bareboat" }] }] };
         }
         if (cmd === "DescribeStackEventsCommand") {
           return { StackEvents: [{ ResourceStatusReason: "transient KMS grant failure" }] };
@@ -66,20 +66,20 @@ describe("deployStack", () => {
       },
     } as any;
 
-    const out = await deployStack(cfn, "keel-control-plane", "tpl", {}, {
+    const out = await deployStack(cfn, "bareboat-control-plane", "tpl", {}, {
       retryCreateFailure: (reasons) => reasons.includes("transient KMS grant failure"),
     });
 
     expect(calls.filter((call) => call === "CreateStackCommand")).toHaveLength(2);
     expect(waitUntilStackDeleteComplete).toHaveBeenCalledOnce();
-    expect(out.TableName).toBe("keel");
+    expect(out.TableName).toBe("bareboat");
   });
 
   it("does not retry create failures that the caller does not classify as transient", async () => {
     waitUntilStackCreateComplete.mockRejectedValueOnce(new Error("create failed"));
     const { calls, cfn } = fakeCfn({ exists: false });
 
-    await expect(deployStack(cfn, "keel-control-plane", "tpl", {}, { retryCreateFailure: () => false }))
+    await expect(deployStack(cfn, "bareboat-control-plane", "tpl", {}, { retryCreateFailure: () => false }))
       .rejects.toThrow("create failed");
     expect(calls.filter((call) => call === "CreateStackCommand")).toHaveLength(1);
     expect(waitUntilStackDeleteComplete).not.toHaveBeenCalled();
@@ -97,22 +97,22 @@ describe("deployStack", () => {
         return {};
       },
     } as any;
-    await expect(deployStack(cfn, "keel-control-plane", "tpl", {})).rejects.toThrow(/Rate exceeded/);
+    await expect(deployStack(cfn, "bareboat-control-plane", "tpl", {})).rejects.toThrow(/Rate exceeded/);
     expect(calls).not.toContain("CreateStackCommand");
   });
 
   it("creates when the stack does not exist and returns outputs", async () => {
     const { calls, cfn } = fakeCfn({ exists: false });
-    const out = await deployStack(cfn, "keel-control-plane", "tpl", { WebhookCode: "x" });
+    const out = await deployStack(cfn, "bareboat-control-plane", "tpl", { WebhookCode: "x" });
     expect(calls).toContain("CreateStackCommand");
-    expect(out.TableName).toBe("keel");
+    expect(out.TableName).toBe("bareboat");
   });
 
   it("updates when the stack exists and tolerates no-op updates", async () => {
     const { calls, cfn } = fakeCfn({ exists: true, noUpdates: true });
-    const out = await deployStack(cfn, "keel-control-plane", "tpl", {});
+    const out = await deployStack(cfn, "bareboat-control-plane", "tpl", {});
     expect(calls).toContain("UpdateStackCommand");
-    expect(out.TableName).toBe("keel");
+    expect(out.TableName).toBe("bareboat");
   });
 });
 
@@ -130,7 +130,7 @@ describe("stack tags (#17)", () => {
             if (!exists && !calls.includes("CreateStackCommand")) {
               throw Object.assign(new Error("Stack does not exist"), { name: "ValidationError" });
             }
-            return { Stacks: [{ Outputs: [{ OutputKey: "TableName", OutputValue: "keel" }] }] };
+            return { Stacks: [{ Outputs: [{ OutputKey: "TableName", OutputValue: "bareboat" }] }] };
           }
           if (cmd === "CreateStackCommand" || cmd === "UpdateStackCommand") inputs.push(c.input);
           // Tags are captured above before this short-circuits the update waiter.
@@ -143,29 +143,29 @@ describe("stack tags (#17)", () => {
 
   it("sends project tags on create so CloudFormation propagates them to every resource", async () => {
     const { inputs, cfn } = capturingCfn(false);
-    await deployStack(cfn, "keel-app-web", "tpl", {}, { tags: projectTags("acme") });
+    await deployStack(cfn, "bareboat-app-web", "tpl", {}, { tags: projectTags("acme") });
     expect(inputs[0].Tags).toEqual([
-      { Key: "keel:managed", Value: "true" },
-      { Key: "keel:project", Value: "acme" },
+      { Key: "bareboat:managed", Value: "true" },
+      { Key: "bareboat:project", Value: "acme" },
     ]);
   });
 
   it("tags updates too, so existing stacks pick the tags up on next deploy", async () => {
     const { inputs, cfn } = capturingCfn(true);
-    await deployStack(cfn, "keel-app-web", "tpl", {}, { tags: projectTags("acme") });
-    expect(inputs[0].Tags).toContainEqual({ Key: "keel:project", Value: "acme" });
+    await deployStack(cfn, "bareboat-app-web", "tpl", {}, { tags: projectTags("acme") });
+    expect(inputs[0].Tags).toContainEqual({ Key: "bareboat:project", Value: "acme" });
   });
 
-  it("tags shared stacks as keel-managed without a project attribution", async () => {
+  it("tags shared stacks as bareboat-managed without a project attribution", async () => {
     const { inputs, cfn } = capturingCfn(false);
-    await deployStack(cfn, "keel-ingress", "tpl", {}, { tags: SHARED_TAGS });
-    expect(inputs[0].Tags).toEqual([{ Key: "keel:managed", Value: "true" }]);
-    expect(inputs[0].Tags.map((t: any) => t.Key)).not.toContain("keel:project");
+    await deployStack(cfn, "bareboat-ingress", "tpl", {}, { tags: SHARED_TAGS });
+    expect(inputs[0].Tags).toEqual([{ Key: "bareboat:managed", Value: "true" }]);
+    expect(inputs[0].Tags.map((t: any) => t.Key)).not.toContain("bareboat:project");
   });
 
   it("sends an empty tag list when no tags are configured", async () => {
     const { inputs, cfn } = capturingCfn(false);
-    await deployStack(cfn, "keel-ingress", "tpl", {});
+    await deployStack(cfn, "bareboat-ingress", "tpl", {});
     expect(inputs[0].Tags).toEqual([]);
   });
 });
@@ -180,6 +180,6 @@ describe("control-plane template", () => {
   });
 
   it("empties the shared ECR repository when the control plane is deleted", () => {
-    expect(tpl).toMatch(/Repo:\n    Type: AWS::ECR::Repository\n    Properties:\n      RepositoryName: keel-apps\n      EmptyOnDelete: true/);
+    expect(tpl).toMatch(/Repo:\n    Type: AWS::ECR::Repository\n    Properties:\n      RepositoryName: bareboat-apps\n      EmptyOnDelete: true/);
   });
 });

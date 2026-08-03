@@ -16,5 +16,5 @@ export function envCommand(action: "set" | "unset" | "list", pairs: string[], di
     for (const k of pairs) delete cfg.env[k];
   }
   saveAppConfig(dir, cfg);
-  console.log("saved — run `keel deploy` to apply");
+  console.log("saved — run `bareboat deploy` to apply");
 }

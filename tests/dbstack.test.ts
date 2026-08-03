@@ -49,7 +49,7 @@ describe("ensureDbInstance", () => {
     const { cfn, params } = fakeClients({ Endpoint: "db.example.rds.amazonaws.com", DbSgId: "sg-db" });
     const { ssm, puts } = fakeSsm();
     const info = await ensureDbInstance({ cfn, ssm } as any, gcfg, {
-      stackName: "keel-db-main", instanceId: "main", masterPasswordSsm: "/keel/db/main/master-password",
+      stackName: "bareboat-db-main", instanceId: "main", masterPasswordSsm: "/bareboat/db/main/master-password",
     });
 
     expect(puts).toHaveLength(1);
@@ -69,7 +69,7 @@ describe("ensureDbInstance", () => {
     const { cfn } = fakeClients({ Endpoint: "db.example.rds.amazonaws.com", DbSgId: "sg-db" });
     const { ssm, puts } = fakeSsm("existing-pw");
     const info = await ensureDbInstance({ cfn, ssm } as any, gcfg, {
-      stackName: "keel-db-main", instanceId: "main", masterPasswordSsm: "/keel/db/main/master-password",
+      stackName: "bareboat-db-main", instanceId: "main", masterPasswordSsm: "/bareboat/db/main/master-password",
     });
     expect(puts).toHaveLength(0);
     expect(info.masterPassword).toBe("existing-pw");
@@ -79,7 +79,7 @@ describe("ensureDbInstance", () => {
     const { cfn, params } = fakeClients({ Endpoint: "d", DbSgId: "s" });
     const { ssm } = fakeSsm("pw");
     await ensureDbInstance({ cfn, ssm } as any, gcfg, {
-      stackName: "keel-db-api", instanceId: "api", masterPasswordSsm: "/keel/db/api/master-password", dbName: "api",
+      stackName: "bareboat-db-api", instanceId: "api", masterPasswordSsm: "/bareboat/db/api/master-password", dbName: "api",
     });
     const p = Object.fromEntries(params[0].map((x: any) => [x.ParameterKey, x.ParameterValue]));
     expect(p.DbName).toBe("api");
@@ -92,7 +92,7 @@ describe("ensureDbInstance", () => {
       ensureDbInstance({ cfn, ssm } as any, { region: "x", ingress: "port" } as any, {
         stackName: "s", instanceId: "i", masterPasswordSsm: "p",
       }),
-    ).rejects.toThrow(/keel setup/);
+    ).rejects.toThrow(/bareboat setup/);
   });
 });
 
@@ -109,7 +109,7 @@ describe("getMyIp", () => {
 });
 
 describe("setMasterIpRule", () => {
-  it("revokes only keel:master rules then authorizes the new /32", async () => {
+  it("revokes only bareboat:master rules then authorizes the new /32", async () => {
     const calls: { cmd: string; input: any }[] = [];
     const ec2 = {
       send: async (c: any) => {
@@ -118,7 +118,7 @@ describe("setMasterIpRule", () => {
         if (cmd === "DescribeSecurityGroupRulesCommand") {
           return {
             SecurityGroupRules: [
-              { SecurityGroupRuleId: "sgr-1", IsEgress: false, Description: "keel:master" },
+              { SecurityGroupRuleId: "sgr-1", IsEgress: false, Description: "bareboat:master" },
               { SecurityGroupRuleId: "sgr-2", IsEgress: false, Description: "other" },
             ],
           };
@@ -131,7 +131,7 @@ describe("setMasterIpRule", () => {
     expect(revoke?.input.SecurityGroupRuleIds).toEqual(["sgr-1"]);
     const authorize = calls.find((c) => c.cmd === "AuthorizeSecurityGroupIngressCommand");
     expect(authorize?.input.IpPermissions[0].IpRanges[0].CidrIp).toBe("9.9.9.9/32");
-    expect(authorize?.input.IpPermissions[0].IpRanges[0].Description).toBe("keel:master");
+    expect(authorize?.input.IpPermissions[0].IpRanges[0].Description).toBe("bareboat:master");
   });
 
   it("skips revoke when no stale rules exist", async () => {

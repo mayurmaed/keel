@@ -11,7 +11,7 @@ import { awsDeps, type AwsIo } from "../targets/aws.js";
 export type DbIo = AwsIo & { pg?: PgFactory; fetchImpl?: typeof fetch };
 
 function notFound(name: string): Error {
-  return new Error(`database "${name}" not found — create it with \`keel db create ${name}\``);
+  return new Error(`database "${name}" not found — create it with \`bareboat db create ${name}\``);
 }
 
 export async function dbCreate(
@@ -29,10 +29,11 @@ export async function dbCreate(
 
   if (isolation === "dedicated") {
     if (name.includes("_")) {
-      throw new Error(`dedicated databases can't contain underscores (the name becomes the RDS instance id "keel-db-${name}") — use hyphens-free lowercase letters/digits, or use --isolation shared`);
+      throw new Error(`dedicated databases can't contain underscores (the name becomes the RDS instance id "bareboat-db-${name}") — use hyphens-free lowercase letters/digits, or use --isolation shared`);
     }
-    if (name.length > 55) {
-      throw new Error(`dedicated database names are limited to 55 characters (RDS instance id "keel-db-<name>" caps at 63)`);
+    // 63 (RDS instance id cap) minus the 12-char "bareboat-db-" prefix.
+    if (name.length > 51) {
+      throw new Error(`dedicated database names are limited to 51 characters (RDS instance id "bareboat-db-<name>" caps at 63)`);
     }
     if (name === "postgres") {
       throw new Error(`"postgres" is reserved by RDS — pick another name`);
@@ -47,30 +48,30 @@ export async function dbCreate(
   let host: string, dbSgId: string, masterPassword: string, url: string, dbUser: string, stack: string;
   if (isolation === "shared") {
     console.log("first shared database provisions the instance — takes ~8 minutes");
-    stack = "keel-db-shared";
+    stack = "bareboat-db-shared";
     ({ host, dbSgId, masterPassword } = await ensureDbInstance(clients, gcfg, {
-      stackName: stack, instanceId: stack, masterPasswordSsm: "/keel/db-shared/master",
+      stackName: stack, instanceId: stack, masterPasswordSsm: "/bareboat/db-shared/master",
       ...(opts.backupDays ? { backupDays: Number(opts.backupDays) } : {}),
     }));
     await setMasterIpRule(clients.ec2, dbSgId, await getMyIp(fetchImpl));
-    const adminUrl = `postgres://keeladmin:${masterPassword}@${host}:5432/postgres?sslmode=require`;
+    const adminUrl = `postgres://bareboatadmin:${masterPassword}@${host}:5432/postgres?sslmode=require`;
     const appPw = randomBytes(24).toString("hex");
     await createLogicalDb(pg, adminUrl, name, appPw);
     url = `postgres://${name}:${appPw}@${host}:5432/${name}?sslmode=require`;
     dbUser = name;
   } else {
-    stack = `keel-db-${name}`;
+    stack = `bareboat-db-${name}`;
     ({ host, dbSgId, masterPassword } = await ensureDbInstance(clients, gcfg, {
-      stackName: stack, instanceId: stack, masterPasswordSsm: `/keel/db/${name}/master`, dbName: name, project: opts.project ?? name,
+      stackName: stack, instanceId: stack, masterPasswordSsm: `/bareboat/db/${name}/master`, dbName: name, project: opts.project ?? name,
       ...(opts.backupDays ? { backupDays: Number(opts.backupDays) } : {}),
     }));
     await setMasterIpRule(clients.ec2, dbSgId, await getMyIp(fetchImpl));
-    url = `postgres://keeladmin:${masterPassword}@${host}:5432/${name}?sslmode=require`;
-    dbUser = "keeladmin";
+    url = `postgres://bareboatadmin:${masterPassword}@${host}:5432/${name}?sslmode=require`;
+    dbUser = "bareboatadmin";
   }
 
   await clients.ssm.send(new PutParameterCommand({
-    Name: `/keel/db/${name}/url`, Value: url, Type: "SecureString", Overwrite: true,
+    Name: `/bareboat/db/${name}/url`, Value: url, Type: "SecureString", Overwrite: true,
   }));
   await putDb(reg, {
     name, project: opts.project ?? name, isolation, access: "public", engine: "postgres",
@@ -81,14 +82,14 @@ export async function dbCreate(
     stack, url: `${host}:5432`, createdAt: new Date().toISOString(),
   }, io.projectsPath);
   console.log(url);
-  console.log("your current IP is allowed. if it changes: keel db allow-ip");
+  console.log("your current IP is allowed. if it changes: bareboat db allow-ip");
 }
 
 export async function dbList(io: DbIo = {}): Promise<void> {
   const { reg } = awsDeps(io);
   const dbs = await listDbs(reg);
   if (!dbs.length) {
-    console.log("no databases — create one with `keel db create <name>`");
+    console.log("no databases — create one with `bareboat db create <name>`");
     return;
   }
   for (const d of dbs) console.log(`${d.name}  ${d.isolation}  ${d.project}  ${d.host}`);
@@ -97,7 +98,7 @@ export async function dbList(io: DbIo = {}): Promise<void> {
 export async function dbUrl(name: string, io: DbIo = {}): Promise<void> {
   const { clients } = awsDeps(io);
   try {
-    const res = await clients.ssm.send(new GetParameterCommand({ Name: `/keel/db/${name}/url`, WithDecryption: true }));
+    const res = await clients.ssm.send(new GetParameterCommand({ Name: `/bareboat/db/${name}/url`, WithDecryption: true }));
     console.log(res.Parameter!.Value as string);
   } catch (e: any) {
     if (e?.name !== "ParameterNotFound") throw e;
@@ -131,18 +132,18 @@ export async function dbDestroy(name: string, io: DbIo = {}): Promise<void> {
   if (!rec) throw notFound(name);
 
   if (rec.isolation === "shared") {
-    const res = await clients.ssm.send(new GetParameterCommand({ Name: "/keel/db-shared/master", WithDecryption: true }));
-    const adminUrl = `postgres://keeladmin:${res.Parameter!.Value}@${rec.host}:5432/postgres?sslmode=require`;
+    const res = await clients.ssm.send(new GetParameterCommand({ Name: "/bareboat/db-shared/master", WithDecryption: true }));
+    const adminUrl = `postgres://bareboatadmin:${res.Parameter!.Value}@${rec.host}:5432/postgres?sslmode=require`;
     await dropLogicalDb(io.pg ?? realPg, adminUrl, name);
   } else {
-    const stackName = `keel-db-${name}`;
+    const stackName = `bareboat-db-${name}`;
     await clients.cfn.send(new DeleteStackCommand({ StackName: stackName }));
     await waitUntilStackDeleteComplete({ client: clients.cfn as CloudFormationClient, maxWaitTime: 900 }, { StackName: stackName });
-    await clients.ssm.send(new DeleteParameterCommand({ Name: `/keel/db/${name}/master` }));
+    await clients.ssm.send(new DeleteParameterCommand({ Name: `/bareboat/db/${name}/master` }));
   }
 
   try {
-    await clients.ssm.send(new DeleteParameterCommand({ Name: `/keel/db/${name}/url` }));
+    await clients.ssm.send(new DeleteParameterCommand({ Name: `/bareboat/db/${name}/url` }));
   } catch (e: any) {
     if (e?.name !== "ParameterNotFound") throw e;
   }
@@ -154,8 +155,8 @@ export async function dbDestroy(name: string, io: DbIo = {}): Promise<void> {
     const remaining = await listDbs(reg);
     if (remaining.every((d) => d.isolation !== "shared")) {
       console.log(
-        "shared instance keel-db-shared is still running (~$13/mo) — remove it with: " +
-        "aws cloudformation delete-stack --stack-name keel-db-shared",
+        "shared instance bareboat-db-shared is still running (~$13/mo) — remove it with: " +
+        "aws cloudformation delete-stack --stack-name bareboat-db-shared",
       );
     }
   }

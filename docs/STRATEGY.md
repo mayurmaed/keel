@@ -1,12 +1,12 @@
-# Keel — Strategy & Context
+# Bareboat — Strategy & Context
 
-> North-star context for the project. Read this first when picking Keel back up.
+> North-star context for the project. Read this first when picking Bareboat back up.
 > Planning lives in **GitHub Issues + Milestones** (not Jira) — see the repo's
-> [issues](https://github.com/mayurmaed/keel/issues) and milestones. This doc is the "why".
+> [issues](https://github.com/mayurmaed/bareboat/issues) and milestones. This doc is the "why".
 
 _Last updated: 2026-07-13_
 
-## What Keel is
+## What Bareboat is
 
 A **BYO-AWS deploy platform** — a self-hosted Render/Supabase alternative that deploys
 apps into the user's *own* AWS account, with no hosted SaaS and no per-seat bill. The
@@ -30,7 +30,7 @@ plane, encrypted SSM env vars, and logs/destroy commands.
 
 ## Decisions made (2026-07-13 session)
 
-These are also mirrored in the owner's decision log (`~/.claude/decisions/keel.md`).
+These are also mirrored in the owner's decision log (`~/.claude/decisions/bareboat.md`).
 
 1. **Tracker = GitHub, not Jira/Confluence.** Considered Jira-first and reversed it the
    same day: the project is headed for open source, so the tracker must be visible to
@@ -41,29 +41,29 @@ These are also mirrored in the owner's decision log (`~/.claude/decisions/keel.m
    - Secrets audit of the *full git history* (blocker — AWS keys were used in dev)
    - Add a LICENSE (recommendation: **Apache-2.0** — permissive maximizes adoption for a
      BYO-AWS tool where trust/auditability drives usage; hosted-competitor risk is low
-     since Keel runs in the *user's* account)
+     since Bareboat runs in the *user's* account)
    - CI (lint/build/test + gitleaks) — none exists today
    - README + real deployment walkthrough
    - CONTRIBUTING / issue templates / Code of Conduct
-   - One real dogfood workload running on Keel
+   - One real dogfood workload running on Bareboat
 
    Rationale: open source is the trust model for a tool that takes your AWS credentials
    and provisions infra — but private→public has no reverse gear, so flip deliberately
    once the gate is green.
 
-3. **Keel's cost-saving target is Render, not Supabase.** For the owner's own stack, Keel
+3. **Bareboat's cost-saving target is Render, not Supabase.** For the owner's own stack, Bareboat
    replaces the 3 Render services (bigger monthly line than a $25 Supabase bill).
    Self-hosting Supabase on AWS is break-even at best (~$30–36/mo for a t4g.medium + EBS)
-   and Keel has no auth until Phase 3 anyway, so it can't replace a Supabase-with-RLS
+   and Bareboat has no auth until Phase 3 anyway, so it can't replace a Supabase-with-RLS
    backend yet. RoleBolt stays on managed Supabase.
 
 ## Positioning (resolved)
 
-**Keel is a standalone product** (D-3, reaffirmed D-5, 2026-07-14). It may be *used by*
+**Bareboat is a standalone product** (D-3, reaffirmed D-5, 2026-07-14). It may be *used by*
 other applications, but it is not built as any app's hosting engine, and no other
 project's needs drive its roadmap. Phase 3 therefore targets single-team CLI/DX
 (auth for your own apps), not programmatic multi-tenant provisioning. Any evaluation
-of hosting a specific external app on Keel is done in that app's own repository against
+of hosting a specific external app on Bareboat is done in that app's own repository against
 a copy — never coupled into this repo.
 
 ## How to resume

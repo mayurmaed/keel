@@ -33,7 +33,7 @@ export async function createLogicalDb(factory: PgFactory, adminUrl: string, name
   const c = factory(adminUrl);
   await c.connect();
   try {
-    // DROP first: a partially-failed prior create leaves an ownerless role; keel's
+    // DROP first: a partially-failed prior create leaves an ownerless role; bareboat's
     // registry duplicate-guard means a healthy db never reaches this path.
     await c.query(`DROP ROLE IF EXISTS ${id}`);
     await c.query(`CREATE ROLE ${id} LOGIN PASSWORD '${password}'`);

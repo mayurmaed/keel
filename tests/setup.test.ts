@@ -27,13 +27,13 @@ function fakeClients() {
     },
   });
   const outputs = [
-    { OutputKey: "TableName", OutputValue: "keel" },
-    { OutputKey: "ClusterName", OutputValue: "keel" },
-    { OutputKey: "EcrRepoUri", OutputValue: "1.dkr.ecr.x.amazonaws.com/keel-apps" },
-    { OutputKey: "BuildProject", OutputValue: "keel-build" },
+    { OutputKey: "TableName", OutputValue: "bareboat" },
+    { OutputKey: "ClusterName", OutputValue: "bareboat" },
+    { OutputKey: "EcrRepoUri", OutputValue: "1.dkr.ecr.x.amazonaws.com/bareboat-apps" },
+    { OutputKey: "BuildProject", OutputValue: "bareboat-build" },
     { OutputKey: "WebhookBase", OutputValue: "https://api.example.com/hook" },
-    { OutputKey: "TaskExecRoleArn", OutputValue: "arn:aws:iam::1:role/keel-task-exec" },
-    { OutputKey: "LogGroup", OutputValue: "/keel/apps" },
+    { OutputKey: "TaskExecRoleArn", OutputValue: "arn:aws:iam::1:role/bareboat-task-exec" },
+    { OutputKey: "LogGroup", OutputValue: "/bareboat/apps" },
   ];
   return {
     calls,
@@ -60,7 +60,7 @@ describe("setupCommand", () => {
 
   it("deploys the stack with the webhook code and writes global config", async () => {
     const { calls, clients } = fakeClients();
-    const configPath = join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");
+    const configPath = join(mkdtempSync(join(tmpdir(), "bareboat-test-")), "config.json");
     await setupCommand({ region: "ap-south-1", yes: true }, { clients, configPath });
 
     const create = calls.find((c) => ["CreateStackCommand", "UpdateStackCommand"].includes(c.cmd));
@@ -70,7 +70,7 @@ describe("setupCommand", () => {
 
     const cfg = JSON.parse(readFileSync(configPath, "utf8"));
     expect(cfg.region).toBe("ap-south-1");
-    expect(cfg.controlPlane.tableName).toBe("keel");
+    expect(cfg.controlPlane.tableName).toBe("bareboat");
     expect(cfg.controlPlane.vpcId).toBe("vpc-123");
     expect(cfg.controlPlane.subnetIds).toEqual(["subnet-a", "subnet-b"]);
     expect(cfg.controlPlane.webhookBase).toBe("https://api.example.com/hook");
@@ -78,21 +78,21 @@ describe("setupCommand", () => {
 
   it("stores a github token in SSM when provided", async () => {
     const { calls, clients } = fakeClients();
-    const configPath = join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");
+    const configPath = join(mkdtempSync(join(tmpdir(), "bareboat-test-")), "config.json");
     await setupCommand({ region: "ap-south-1", githubToken: "ghp_x", yes: true }, { clients, configPath });
     const put = calls.find((c) => c.client === "ssm" && c.cmd === "PutParameterCommand")!;
-    expect(put.input).toMatchObject({ Name: "/keel/github-token", Type: "SecureString", Overwrite: true });
+    expect(put.input).toMatchObject({ Name: "/bareboat/github-token", Type: "SecureString", Overwrite: true });
   });
 
   it("stores the profile in config and sets AWS_PROFILE", async () => {
     const { clients } = fakeClients();
-    const configPath = join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");
+    const configPath = join(mkdtempSync(join(tmpdir(), "bareboat-test-")), "config.json");
     const prior = process.env.AWS_PROFILE;
     try {
       delete process.env.AWS_PROFILE;
-      await setupCommand({ region: "ap-south-1", profile: "keel", yes: true }, { clients, configPath });
-      expect(process.env.AWS_PROFILE).toBe("keel");
-      expect(JSON.parse(readFileSync(configPath, "utf8")).profile).toBe("keel");
+      await setupCommand({ region: "ap-south-1", profile: "bareboat", yes: true }, { clients, configPath });
+      expect(process.env.AWS_PROFILE).toBe("bareboat");
+      expect(JSON.parse(readFileSync(configPath, "utf8")).profile).toBe("bareboat");
     } finally {
       if (prior === undefined) delete process.env.AWS_PROFILE;
       else process.env.AWS_PROFILE = prior;
@@ -109,7 +109,7 @@ describe("setupCommand", () => {
 
   it("stores ingress=port by default", async () => {
     const { clients } = fakeClients();
-    const configPath = join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");
+    const configPath = join(mkdtempSync(join(tmpdir(), "bareboat-test-")), "config.json");
     await setupCommand({ region: "ap-south-1", yes: true }, { clients, configPath });
     expect(JSON.parse(readFileSync(configPath, "utf8")).ingress).toBe("port");
   });
@@ -122,7 +122,7 @@ describe("setupCommand", () => {
           ? { HostedZones: [{ Name: "example.com.", Id: "/hostedzone/Z1" }] }
           : {},
     };
-    const configPath = join(mkdtempSync(join(tmpdir(), "keel-test-")), "config.json");
+    const configPath = join(mkdtempSync(join(tmpdir(), "bareboat-test-")), "config.json");
     await setupCommand(
       { region: "ap-south-1", ingress: "domain", domain: "example.com", yes: true },
       { clients, configPath },

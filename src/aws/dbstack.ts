@@ -20,10 +20,10 @@ export async function ensureDbInstance(
   clients: Pick<AwsClients, "cfn" | "ssm">,
   gcfg: GlobalConfig,
   // ponytail: `project` omitted for the shared instance — one RDS instance backs many
-  // projects, so a keel:project tag on it would misattribute cost to whoever created it first.
+  // projects, so a bareboat:project tag on it would misattribute cost to whoever created it first.
   opts: { stackName: string; instanceId: string; masterPasswordSsm: string; project?: string; dbName?: string; backupDays?: number },
 ): Promise<DbInstanceInfo> {
-  if (!gcfg.controlPlane) throw new Error("run `keel setup` first");
+  if (!gcfg.controlPlane) throw new Error("run `bareboat setup` first");
 
   let masterPassword: string;
   try {
@@ -52,7 +52,7 @@ export async function getMyIp(fetchImpl: typeof fetch = fetch): Promise<string> 
   const res = await fetchImpl("https://checkip.amazonaws.com");
   const ip = (await res.text()).trim();
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-    throw new Error(`could not determine your public IP (got "${ip}") — pass one explicitly: keel db allow-ip <ip>`);
+    throw new Error(`could not determine your public IP (got "${ip}") — pass one explicitly: bareboat db allow-ip <ip>`);
   }
   return ip;
 }
@@ -64,7 +64,7 @@ export async function setMasterIpRule(ec2: Ec2, sgId: string, ip: string): Promi
     Filters: [{ Name: "group-id", Values: [sgId] }],
   }));
   const stale = (rules.SecurityGroupRules ?? [])
-    .filter((r: any) => !r.IsEgress && r.Description === "keel:master")
+    .filter((r: any) => !r.IsEgress && r.Description === "bareboat:master")
     .map((r: any) => r.SecurityGroupRuleId);
   if (stale.length) {
     await ec2.send(new RevokeSecurityGroupIngressCommand({ GroupId: sgId, SecurityGroupRuleIds: stale }));
@@ -72,7 +72,7 @@ export async function setMasterIpRule(ec2: Ec2, sgId: string, ip: string): Promi
   try {
     await ec2.send(new AuthorizeSecurityGroupIngressCommand({
       GroupId: sgId,
-      IpPermissions: [{ IpProtocol: "tcp", FromPort: 5432, ToPort: 5432, IpRanges: [{ CidrIp: `${ip}/32`, Description: "keel:master" }] }],
+      IpPermissions: [{ IpProtocol: "tcp", FromPort: 5432, ToPort: 5432, IpRanges: [{ CidrIp: `${ip}/32`, Description: "bareboat:master" }] }],
     }));
   } catch (e: any) {
     if (e?.name !== "InvalidPermission.Duplicate") throw e;

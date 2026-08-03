@@ -18,7 +18,7 @@ function fakeCfn(outputs: Record<string, string>) {
 
 const gcfg = {
   region: "ap-south-1", ingress: "port",
-  controlPlane: { clusterName: "keel", vpcId: "vpc-1", subnetIds: ["s-1", "s-2"], taskExecRoleArn: "arn:role", logGroup: "/keel/apps" },
+  controlPlane: { clusterName: "bareboat", vpcId: "vpc-1", subnetIds: ["s-1", "s-2"], taskExecRoleArn: "arn:role", logGroup: "/bareboat/apps" },
 } as any;
 const ingress = { albDns: "alb.example", albArn: "arn:alb", albSgId: "sg-alb" } as any;
 
@@ -33,7 +33,7 @@ describe("ensureJwtSecret", () => {
     const secret = await ensureJwtSecret(ssm, "appauth");
     expect(secret).toMatch(/^[0-9a-f]{64}$/);
     const put = calls.find((k) => k.cmd === "PutParameterCommand");
-    expect(put.input).toMatchObject({ Name: "/keel/auth/appauth/jwt-secret", Type: "SecureString" });
+    expect(put.input).toMatchObject({ Name: "/bareboat/auth/appauth/jwt-secret", Type: "SecureString" });
   });
 
   it("returns the existing secret", async () => {
@@ -44,16 +44,16 @@ describe("ensureJwtSecret", () => {
 });
 
 describe("ensureAuthStack", () => {
-  it("creates keel-auth-<name> and returns url + taskSgId", async () => {
+  it("creates bareboat-auth-<name> and returns url + taskSgId", async () => {
     const { calls, cfn } = fakeCfn({ Url: "http://alb.example:8100", TaskSgId: "sg-auth" });
-    const out = await ensureAuthStack({ cfn } as any, gcfg, { name: "appauth", project: "appauth" }, ingress, 8100, "sg-db", "/keel/db/appdb/url", "/keel/auth/appauth/jwt-secret");
+    const out = await ensureAuthStack({ cfn } as any, gcfg, { name: "appauth", project: "appauth" }, ingress, 8100, "sg-db", "/bareboat/db/appdb/url", "/bareboat/auth/appauth/jwt-secret");
     expect(out).toEqual({ url: "http://alb.example:8100", taskSgId: "sg-auth" });
     const create = calls.find((k) => k.cmd === "CreateStackCommand");
     const params = Object.fromEntries(create.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));
     expect(params.AuthName).toBe("appauth");
     expect(params.DbSgId).toBe("sg-db");
-    expect(params.DbUrlParam).toBe("/keel/db/appdb/url");
-    expect(params.JwtSecretParam).toBe("/keel/auth/appauth/jwt-secret");
+    expect(params.DbUrlParam).toBe("/bareboat/db/appdb/url");
+    expect(params.JwtSecretParam).toBe("/bareboat/auth/appauth/jwt-secret");
     expect(params.Project).toBe("appauth");
   });
 });
@@ -61,7 +61,7 @@ describe("ensureAuthStack", () => {
 describe("auth template", () => {
   const tpl = readFileSync("infra/auth.yaml", "utf8");
   it("declares a gotrue service, db ingress, target group, and outputs", () => {
-    for (const k of ["supabase/auth", "9999", "/health", "DbIngress", "AWS::ECS::Service", "GOTRUE_JWT_SECRET", "GOTRUE_DB_DATABASE_URL", "keel:project", "TaskSgId", "Url"])
+    for (const k of ["supabase/auth", "9999", "/health", "DbIngress", "AWS::ECS::Service", "GOTRUE_JWT_SECRET", "GOTRUE_DB_DATABASE_URL", "bareboat:project", "TaskSgId", "Url"])
       expect(tpl).toContain(k);
   });
 });

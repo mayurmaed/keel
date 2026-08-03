@@ -21,11 +21,11 @@ describe("deployLocal", () => {
     const { calls, exec } = fakeExec();
     const url = await deployLocal(cfg, "/app/dir", exec);
     expect(url).toBe("http://localhost:3000");
-    expect(calls[0]).toEqual(["docker", "build", "-t", "keel/web", "/app/dir"]);
-    expect(calls[1]).toEqual(["docker", "rm", "-f", "keel-web"]);
+    expect(calls[0]).toEqual(["docker", "build", "-t", "bareboat/web", "/app/dir"]);
+    expect(calls[1]).toEqual(["docker", "rm", "-f", "bareboat-web"]);
     expect(calls[2]).toEqual([
-      "docker", "run", "-d", "--name", "keel-web", "--label", "keel=1",
-      "--restart", "unless-stopped", "-p", "3000:3000", "-e", "API_KEY=abc", "keel/web",
+      "docker", "run", "-d", "--name", "bareboat-web", "--label", "bareboat=1",
+      "--restart", "unless-stopped", "-p", "3000:3000", "-e", "API_KEY=abc", "bareboat/web",
     ]);
   });
 
@@ -47,19 +47,19 @@ describe("deployLocal", () => {
 });
 
 describe("listLocal", () => {
-  it("lists keel containers via label filter", async () => {
+  it("lists bareboat containers via label filter", async () => {
     const { calls, exec } = fakeExec();
     await listLocal(exec);
     expect(calls[0]).toEqual([
-      "docker", "ps", "--filter", "label=keel=1",
+      "docker", "ps", "--filter", "label=bareboat=1",
       "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}",
     ]);
   });
 
   it("returns [] when output is empty and lines otherwise", async () => {
     expect(await listLocal(async () => "")).toEqual([]);
-    expect(await listLocal(async () => "keel-web\tUp 2 minutes\t3000")).toEqual([
-      "keel-web\tUp 2 minutes\t3000",
+    expect(await listLocal(async () => "bareboat-web\tUp 2 minutes\t3000")).toEqual([
+      "bareboat-web\tUp 2 minutes\t3000",
     ]);
   });
 });
@@ -68,7 +68,7 @@ describe("destroyLocal", () => {
   it("force-removes the container by name", async () => {
     const { calls, exec } = fakeExec();
     await destroyLocal("web", exec);
-    expect(calls[0]).toEqual(["docker", "rm", "-f", "keel-web"]);
+    expect(calls[0]).toEqual(["docker", "rm", "-f", "bareboat-web"]);
   });
 });
 

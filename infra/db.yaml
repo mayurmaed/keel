@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: keel rds instance - single postgres instance, shared or per-app
+Description: bareboat rds instance - single postgres instance, shared or per-app
 
 Parameters:
   InstanceId:
@@ -26,13 +26,13 @@ Resources:
   SubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
-      DBSubnetGroupDescription: !Sub "keel db ${InstanceId}"
+      DBSubnetGroupDescription: !Sub "bareboat db ${InstanceId}"
       SubnetIds: !Ref Subnets
 
   DbSg:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub "keel db ${InstanceId} - rules managed by the keel CLI"
+      GroupDescription: !Sub "bareboat db ${InstanceId} - rules managed by the bareboat CLI"
       VpcId: !Ref VpcId
 
   Instance:
@@ -44,7 +44,7 @@ Resources:
       DBInstanceClass: db.t4g.micro
       AllocatedStorage: "20"
       StorageType: gp3
-      MasterUsername: keeladmin
+      MasterUsername: bareboatadmin
       MasterUserPassword: !Ref MasterPassword
       PubliclyAccessible: true
       StorageEncrypted: true

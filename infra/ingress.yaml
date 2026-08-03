@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: keel shared ingress - ALB + security groups (port or domain mode)
+Description: bareboat shared ingress - ALB + security groups (port or domain mode)
 
 Parameters:
   Mode:
@@ -25,7 +25,7 @@ Resources:
   AlbSg:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: keel-alb ingress
+      GroupDescription: bareboat-alb ingress
       VpcId: !Ref VpcId
 
   AlbSgIngressPortRange:
@@ -61,7 +61,7 @@ Resources:
   Alb:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: keel-alb
+      Name: bareboat-alb
       Type: application
       Scheme: internet-facing
       Subnets: !Ref Subnets

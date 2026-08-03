@@ -20,5 +20,5 @@ async function dbCheck() {
 
 createServer(async (req, res) => {
   const db = await dbCheck();
-  res.end(`hello from keel${process.env.GREETING ? ` — ${process.env.GREETING}` : ""}${db}\n`);
+  res.end(`hello from bareboat${process.env.GREETING ? ` — ${process.env.GREETING}` : ""}${db}\n`);
 }).listen(port, () => console.log(`listening on ${port}`));

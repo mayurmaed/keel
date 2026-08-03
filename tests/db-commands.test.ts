@@ -9,10 +9,10 @@ import type { PgFactory } from "../src/aws/pgadmin";
 const gcfg = {
   region: "ap-south-1",
   controlPlane: {
-    stackName: "keel-control-plane", tableName: "keel", clusterName: "keel",
-    ecrRepoUri: "1.dkr.ecr.x/keel-apps", buildProject: "keel-build",
+    stackName: "bareboat-control-plane", tableName: "bareboat", clusterName: "bareboat",
+    ecrRepoUri: "1.dkr.ecr.x/bareboat-apps", buildProject: "bareboat-build",
     webhookBase: "https://api.example.com/hook",
-    taskExecRoleArn: "arn:x", logGroup: "/keel/apps", vpcId: "vpc-1", subnetIds: ["s-1"],
+    taskExecRoleArn: "arn:x", logGroup: "/bareboat/apps", vpcId: "vpc-1", subnetIds: ["s-1"],
   },
 } as any;
 
@@ -117,35 +117,35 @@ describe("dbCreate shared", () => {
     const io = { gcfg, clients, pg: factory, fetchImpl: fakeFetch() };
     const { logs } = await withoutLogs(() => dbCreate("api", {}, io));
 
-    expect(calls.some((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-db-shared")).toBe(true);
+    expect(calls.some((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "bareboat-db-shared")).toBe(true);
     expect(calls.some((c) => c.cmd === "AuthorizeSecurityGroupIngressCommand")).toBe(true);
     expect(queries.some((q) => q.includes("CREATE ROLE"))).toBe(true);
     expect(queries.some((q) => q.includes("CREATE DATABASE"))).toBe(true);
-    expect(ssmParams.get("/keel/db/api/url")).toMatch(/^postgres:\/\/api:/);
+    expect(ssmParams.get("/bareboat/db/api/url")).toMatch(/^postgres:\/\/api:/);
     const rec = dbRecords.get("api");
     expect(rec.isolation).toBe("shared");
     expect(rec.dbUser).toBe("api");
-    expect(rec.stack).toBe("keel-db-shared");
+    expect(rec.stack).toBe("bareboat-db-shared");
     expect(logs.join("\n")).toContain("~8 minutes");
   });
 });
 
 describe("dbCreate dedicated", () => {
-  it("creates its own stack with DbName param, runs no pg SQL, dbUser is keeladmin", async () => {
+  it("creates its own stack with DbName param, runs no pg SQL, dbUser is bareboatadmin", async () => {
     const { calls, ssmParams, dbRecords, clients } = makeEnv();
     const { queries, factory } = fakePg();
     const io = { gcfg, clients, pg: factory, fetchImpl: fakeFetch() };
     await withoutLogs(() => dbCreate("api", { isolation: "dedicated" }, io));
 
-    const create = calls.find((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-db-api")!;
+    const create = calls.find((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "bareboat-db-api")!;
     expect(create).toBeDefined();
     const params = Object.fromEntries(create.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));
     expect(params.DbName).toBe("api");
     expect(queries).toHaveLength(0);
     const rec = dbRecords.get("api");
-    expect(rec.dbUser).toBe("keeladmin");
-    expect(rec.stack).toBe("keel-db-api");
-    expect(ssmParams.get("/keel/db/api/url")).toMatch(/^postgres:\/\/keeladmin:/);
+    expect(rec.dbUser).toBe("bareboatadmin");
+    expect(rec.stack).toBe("bareboat-db-api");
+    expect(ssmParams.get("/bareboat/db/api/url")).toMatch(/^postgres:\/\/bareboatadmin:/);
   });
 });
 
@@ -177,6 +177,27 @@ describe("dbCreate validation", () => {
     expect(calls).toHaveLength(0);
   });
 
+  // The 51-char cap is derived from the "bareboat-db-" stack prefix, so it silently
+  // rots if the product is ever renamed again. Pin both ends against the real prefix.
+  it("caps dedicated names so the RDS instance id stays within 63 characters", async () => {
+    const PREFIX = "bareboat-db-";
+    const max = 63 - PREFIX.length;
+    expect(max).toBe(51);
+
+    const { calls, clients } = makeEnv();
+    const io = { gcfg, clients, fetchImpl: fakeFetch() };
+    await expect(dbCreate("a".repeat(max + 1), { isolation: "dedicated" }, io))
+      .rejects.toThrow(new RegExp(`${max} characters`));
+    expect(calls).toHaveLength(0);
+
+    // A name exactly at the cap must get past validation and reach AWS.
+    const ok = makeEnv();
+    await withoutLogs(() => dbCreate("a".repeat(max), { isolation: "dedicated" },
+      { gcfg, clients: ok.clients, pg: fakePg().factory, fetchImpl: fakeFetch(), projectsPath: join(mkdtempSync(join(tmpdir(), "bb-")), "p.json") }));
+    const created = ok.calls.find((c) => c.cmd === "CreateStackCommand")!;
+    expect(created.input.StackName).toHaveLength(63);
+  });
+
   it("rejects reserved 'postgres' name in dedicated databases", async () => {
     const { calls, clients } = makeEnv();
     const io = { gcfg, clients, fetchImpl: fakeFetch() };
@@ -199,7 +220,7 @@ describe("dbList", () => {
   it("prints a placeholder when empty", async () => {
     const { clients } = makeEnv();
     const { logs } = await withoutLogs(() => dbList({ gcfg, clients }));
-    expect(logs.join("\n")).toContain("keel db create");
+    expect(logs.join("\n")).toContain("bareboat db create");
   });
 
   it("prints name, isolation, project, host per record", async () => {
@@ -216,23 +237,23 @@ describe("dbList", () => {
 describe("dbUrl", () => {
   it("prints the stored url", async () => {
     const { clients, ssmParams } = makeEnv();
-    ssmParams.set("/keel/db/api/url", "postgres://api:pw@host/api");
+    ssmParams.set("/bareboat/db/api/url", "postgres://api:pw@host/api");
     const { logs } = await withoutLogs(() => dbUrl("api", { gcfg, clients }));
     expect(logs.join("\n")).toContain("postgres://api:pw@host/api");
   });
 
   it("throws an actionable error when missing", async () => {
     const { clients } = makeEnv();
-    await expect(dbUrl("nope", { gcfg, clients })).rejects.toThrow(/keel db create nope/);
+    await expect(dbUrl("nope", { gcfg, clients })).rejects.toThrow(/bareboat db create nope/);
   });
 });
 
 describe("dbAllowIp", () => {
   it("uses the injected fetch IP and calls one Authorize per unique security group", async () => {
     const { calls, dbRecords, clients } = makeEnv();
-    dbRecords.set("api", { name: "api", project: "api", isolation: "shared", host: "h1", dbSgId: "sg-shared", stack: "keel-db-shared", dbUser: "api", dbName: "api", port: 5432, access: "public", engine: "postgres", createdAt: "t" });
-    dbRecords.set("other", { name: "other", project: "other", isolation: "shared", host: "h1", dbSgId: "sg-shared", stack: "keel-db-shared", dbUser: "other", dbName: "other", port: 5432, access: "public", engine: "postgres", createdAt: "t" });
-    dbRecords.set("solo", { name: "solo", project: "solo", isolation: "dedicated", host: "h2", dbSgId: "sg-solo", stack: "keel-db-solo", dbUser: "keeladmin", dbName: "solo", port: 5432, access: "public", engine: "postgres", createdAt: "t" });
+    dbRecords.set("api", { name: "api", project: "api", isolation: "shared", host: "h1", dbSgId: "sg-shared", stack: "bareboat-db-shared", dbUser: "api", dbName: "api", port: 5432, access: "public", engine: "postgres", createdAt: "t" });
+    dbRecords.set("other", { name: "other", project: "other", isolation: "shared", host: "h1", dbSgId: "sg-shared", stack: "bareboat-db-shared", dbUser: "other", dbName: "other", port: 5432, access: "public", engine: "postgres", createdAt: "t" });
+    dbRecords.set("solo", { name: "solo", project: "solo", isolation: "dedicated", host: "h2", dbSgId: "sg-solo", stack: "bareboat-db-solo", dbUser: "bareboatadmin", dbName: "solo", port: 5432, access: "public", engine: "postgres", createdAt: "t" });
     const io = { gcfg, clients, fetchImpl: fakeFetch("5.5.5.5") };
     const { logs } = await withoutLogs(() => dbAllowIp({}, io));
 
@@ -246,11 +267,11 @@ describe("dbAllowIp", () => {
 describe("dbDestroy shared", () => {
   it("drops the logical db, deletes the url param, and deletes the record", async () => {
     const { calls, ssmParams, dbRecords, clients } = makeEnv();
-    ssmParams.set("/keel/db-shared/master", "masterpw");
-    ssmParams.set("/keel/db/api/url", "postgres://api:pw@host/api");
+    ssmParams.set("/bareboat/db-shared/master", "masterpw");
+    ssmParams.set("/bareboat/db/api/url", "postgres://api:pw@host/api");
     dbRecords.set("api", {
-      name: "api", project: "api", isolation: "shared", host: "keel-db-shared.rds.example",
-      dbSgId: "sg-keel-db-shared", stack: "keel-db-shared", dbUser: "api", dbName: "api",
+      name: "api", project: "api", isolation: "shared", host: "bareboat-db-shared.rds.example",
+      dbSgId: "sg-bareboat-db-shared", stack: "bareboat-db-shared", dbUser: "api", dbName: "api",
       port: 5432, access: "public", engine: "postgres", createdAt: "t",
     });
     const { queries, factory } = fakePg();
@@ -259,41 +280,41 @@ describe("dbDestroy shared", () => {
 
     expect(queries.some((q) => q.startsWith("DROP DATABASE"))).toBe(true);
     expect(queries.some((q) => q.startsWith("DROP ROLE"))).toBe(true);
-    expect(ssmParams.has("/keel/db/api/url")).toBe(false);
+    expect(ssmParams.has("/bareboat/db/api/url")).toBe(false);
     expect(dbRecords.has("api")).toBe(false);
     expect(calls.some((c) => c.cmd === "DeleteStackCommand")).toBe(false);
   });
 
   it("hints at the still-running shared instance when no shared dbs remain", async () => {
     const { ssmParams, dbRecords, clients } = makeEnv();
-    ssmParams.set("/keel/db-shared/master", "masterpw");
-    ssmParams.set("/keel/db/api/url", "postgres://api:pw@host/api");
+    ssmParams.set("/bareboat/db-shared/master", "masterpw");
+    ssmParams.set("/bareboat/db/api/url", "postgres://api:pw@host/api");
     dbRecords.set("api", {
-      name: "api", project: "api", isolation: "shared", host: "keel-db-shared.rds.example",
-      dbSgId: "sg-keel-db-shared", stack: "keel-db-shared", dbUser: "api", dbName: "api",
+      name: "api", project: "api", isolation: "shared", host: "bareboat-db-shared.rds.example",
+      dbSgId: "sg-bareboat-db-shared", stack: "bareboat-db-shared", dbUser: "api", dbName: "api",
       port: 5432, access: "public", engine: "postgres", createdAt: "t",
     });
     const { factory } = fakePg();
     const { logs } = await withoutLogs(() => dbDestroy("api", { gcfg, clients, pg: factory }));
-    expect(logs.join("\n")).toContain("delete-stack --stack-name keel-db-shared");
+    expect(logs.join("\n")).toContain("delete-stack --stack-name bareboat-db-shared");
   });
 });
 
 describe("dbDestroy dedicated", () => {
   it("deletes the stack and both master + url params", async () => {
     const { calls, ssmParams, dbRecords, clients } = makeEnv();
-    ssmParams.set("/keel/db/api/master", "masterpw");
-    ssmParams.set("/keel/db/api/url", "postgres://keeladmin:pw@host/api");
+    ssmParams.set("/bareboat/db/api/master", "masterpw");
+    ssmParams.set("/bareboat/db/api/url", "postgres://bareboatadmin:pw@host/api");
     dbRecords.set("api", {
-      name: "api", project: "api", isolation: "dedicated", host: "keel-db-api.rds.example",
-      dbSgId: "sg-keel-db-api", stack: "keel-db-api", dbUser: "keeladmin", dbName: "api",
+      name: "api", project: "api", isolation: "dedicated", host: "bareboat-db-api.rds.example",
+      dbSgId: "sg-bareboat-db-api", stack: "bareboat-db-api", dbUser: "bareboatadmin", dbName: "api",
       port: 5432, access: "public", engine: "postgres", createdAt: "t",
     });
     await withoutLogs(() => dbDestroy("api", { gcfg, clients }));
 
-    expect(calls.some((c) => c.cmd === "DeleteStackCommand" && c.input.StackName === "keel-db-api")).toBe(true);
-    expect(ssmParams.has("/keel/db/api/master")).toBe(false);
-    expect(ssmParams.has("/keel/db/api/url")).toBe(false);
+    expect(calls.some((c) => c.cmd === "DeleteStackCommand" && c.input.StackName === "bareboat-db-api")).toBe(true);
+    expect(ssmParams.has("/bareboat/db/api/master")).toBe(false);
+    expect(ssmParams.has("/bareboat/db/api/url")).toBe(false);
     expect(dbRecords.has("api")).toBe(false);
   });
 });
@@ -307,7 +328,7 @@ describe("dbDestroy validation", () => {
 
 describe("project registry sync (#18)", () => {
   it("records the database on create and removes it on destroy", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "keel-db-reg-"));
+    const dir = mkdtempSync(join(tmpdir(), "bareboat-db-reg-"));
     const projectsPath = join(dir, "projects.json");
     try {
       const { clients } = makeEnv();
@@ -316,7 +337,7 @@ describe("project registry sync (#18)", () => {
 
       await withoutLogs(() => dbCreate("api", { project: "acme" }, io));
       const [rec] = readProjects(projectsPath);
-      expect(rec).toMatchObject({ kind: "db", name: "api", project: "acme", region: "ap-south-1", stack: "keel-db-shared" });
+      expect(rec).toMatchObject({ kind: "db", name: "api", project: "acme", region: "ap-south-1", stack: "bareboat-db-shared" });
 
       await withoutLogs(() => dbDestroy("api", io));
       expect(readProjects(projectsPath)).toEqual([]);
@@ -326,7 +347,7 @@ describe("project registry sync (#18)", () => {
   });
 
   it("defaults the project to the database name when --project is not given", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "keel-db-reg-"));
+    const dir = mkdtempSync(join(tmpdir(), "bareboat-db-reg-"));
     const projectsPath = join(dir, "projects.json");
     try {
       const { clients } = makeEnv();

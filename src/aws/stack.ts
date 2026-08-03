@@ -19,14 +19,14 @@ export interface DeployStackOptions {
   tags?: Record<string, string>;
 }
 
-/** Tags for a project-scoped stack (app, db, auth) — `keel:project` drives
+/** Tags for a project-scoped stack (app, db, auth) — `bareboat:project` drives
  *  per-project cost attribution in Cost Explorer. */
 export function projectTags(project: string): Record<string, string> {
-  return { "keel:managed": "true", "keel:project": project };
+  return { "bareboat:managed": "true", "bareboat:project": project };
 }
 
 /** Tags for stacks shared across every project (control plane, ingress). */
-export const SHARED_TAGS: Record<string, string> = { "keel:managed": "true" };
+export const SHARED_TAGS: Record<string, string> = { "bareboat:managed": "true" };
 
 export async function stackOutputs(cfn: Cfn, name: string): Promise<Record<string, string>> {
   const res = await cfn.send(new DescribeStacksCommand({ StackName: name }));

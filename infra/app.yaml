@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: keel per-app runtime - target group, fargate service, routing (port or domain mode)
+Description: bareboat per-app runtime - target group, fargate service, routing (port or domain mode)
 
 Parameters:
   AppName:
@@ -51,7 +51,7 @@ Resources:
   TaskSg:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub "keel app ${AppName} - ingress only from the ALB"
+      GroupDescription: !Sub "bareboat app ${AppName} - ingress only from the ALB"
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -68,7 +68,7 @@ Resources:
       FromPort: 5432
       ToPort: 5432
       SourceSecurityGroupId: !Ref TaskSg
-      Description: !Sub "keel:app:${AppName}"
+      Description: !Sub "bareboat:app:${AppName}"
 
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -127,9 +127,9 @@ Resources:
     Condition: IsPort
     DependsOn: PortListener
     Properties:
-      ServiceName: !Sub "keel-${AppName}"
+      ServiceName: !Sub "bareboat-${AppName}"
       Cluster: !Ref Cluster
-      TaskDefinition: !Sub "keel-${AppName}"
+      TaskDefinition: !Sub "bareboat-${AppName}"
       DesiredCount: 1
       LaunchType: FARGATE
       HealthCheckGracePeriodSeconds: 60
@@ -148,9 +148,9 @@ Resources:
     Condition: IsDomain
     DependsOn: DomainRule
     Properties:
-      ServiceName: !Sub "keel-${AppName}"
+      ServiceName: !Sub "bareboat-${AppName}"
       Cluster: !Ref Cluster
-      TaskDefinition: !Sub "keel-${AppName}"
+      TaskDefinition: !Sub "bareboat-${AppName}"
       DesiredCount: 1
       LaunchType: FARGATE
       HealthCheckGracePeriodSeconds: 60

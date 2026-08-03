@@ -1,4 +1,4 @@
-// keel webhook: verify GitHub HMAC, record deploy, start CodeBuild. CJS: CFN ZipFile => index.js
+// bareboat webhook: verify GitHub HMAC, record deploy, start CodeBuild. CJS: CFN ZipFile => index.js
 "use strict";
 const { createHmac, timingSafeEqual } = require("node:crypto");
 const { DynamoDBClient, GetItemCommand, PutItemCommand } = require("@aws-sdk/client-dynamodb");
@@ -13,7 +13,7 @@ const makeHandler = (d) => async (evt) => {
   const body = evt.isBase64Encoded ? Buffer.from(evt.body || "", "base64") : Buffer.from(evt.body || "");
   const rec = await d.ddb.send(new GetItemCommand({ TableName: T, Key: { PK: { S: "APP#" + app }, SK: { S: "META" } } }));
   if (!rec.Item) return { statusCode: 204 };
-  const sec = (await d.ssm.send(new GetParameterCommand({ Name: "/keel/" + app + "/webhook-secret", WithDecryption: true }))).Parameter.Value;
+  const sec = (await d.ssm.send(new GetParameterCommand({ Name: "/bareboat/" + app + "/webhook-secret", WithDecryption: true }))).Parameter.Value;
   const want = "sha256=" + createHmac("sha256", sec).update(body).digest("hex");
   if (want.length !== sig.length || !timingSafeEqual(Buffer.from(want), Buffer.from(sig))) {
     return { statusCode: 401, body: "bad signature" };

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Keel is pre-1.0 (`0.x`). Only the latest commit on the active integration
+Bareboat is pre-1.0 (`0.x`). Only the latest commit on the active integration
 branch is supported — there are no maintained release branches yet.
 
 ## Reporting a vulnerability
@@ -10,7 +10,7 @@ branch is supported — there are no maintained release branches yet.
 Please **do not open a public GitHub issue** for security vulnerabilities.
 
 Instead, report privately via GitHub's
-[private vulnerability reporting](https://github.com/mayurmaed/keel/security/advisories/new)
+[private vulnerability reporting](https://github.com/mayurmaed/bareboat/security/advisories/new)
 (Security tab → "Report a vulnerability"), or email the maintainer directly.
 Include:
 
@@ -18,7 +18,7 @@ Include:
 - Steps to reproduce (or a PoC, if applicable)
 - Affected file(s)/command(s)
 
-Given Keel provisions real AWS resources on the user's behalf (IAM roles,
+Given Bareboat provisions real AWS resources on the user's behalf (IAM roles,
 CodeBuild, ECS, DynamoDB, SSM), issues involving credential handling, IAM
 scoping, or webhook signature verification are treated as high priority.
 

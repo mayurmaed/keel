@@ -10,10 +10,10 @@ const cfg: AppConfig = {
 const gcfg = {
   region: "ap-south-1",
   controlPlane: {
-    stackName: "keel-control-plane", tableName: "keel", clusterName: "keel",
-    ecrRepoUri: "1.dkr.ecr.x/keel-apps", buildProject: "keel-build",
+    stackName: "bareboat-control-plane", tableName: "bareboat", clusterName: "bareboat",
+    ecrRepoUri: "1.dkr.ecr.x/bareboat-apps", buildProject: "bareboat-build",
     webhookBase: "https://api.example.com/hook",
-    taskExecRoleArn: "arn:x", logGroup: "/keel/apps", vpcId: "vpc-1", subnetIds: ["s-1"],
+    taskExecRoleArn: "arn:x", logGroup: "/bareboat/apps", vpcId: "vpc-1", subnetIds: ["s-1"],
   },
 } as any;
 
@@ -25,7 +25,7 @@ function fakeIo(deployStatuses: string[]) {
     const cmd = c.constructor.name;
     calls.push({ cmd, input: c.input });
     if (cmd === "GetParameterCommand") {
-      if (c.input.Name === "/keel/db/api/url") return { Parameter: { Value: "postgres://api:pw@db.example:5432/api?sslmode=require" } };
+      if (c.input.Name === "/bareboat/db/api/url") return { Parameter: { Value: "postgres://api:pw@db.example:5432/api?sslmode=require" } };
       return { Parameter: { Value: "secret" } };
     }
     if (cmd === "ScanCommand") return { Items: [] };
@@ -37,7 +37,7 @@ function fakeIo(deployStatuses: string[]) {
             Item: {
               PK: "DB#api", SK: "META", name: "api", project: "api", isolation: "shared",
               access: "public", engine: "postgres", host: "db.example", port: 5432,
-              dbName: "api", dbUser: "api", stack: "keel-db-shared", dbSgId: "sg-db", createdAt: "t",
+              dbName: "api", dbUser: "api", stack: "bareboat-db-shared", dbSgId: "sg-db", createdAt: "t",
             },
           };
         }
@@ -45,7 +45,7 @@ function fakeIo(deployStatuses: string[]) {
       }
       if (pk.startsWith("AUTH#")) {
         if (pk === "AUTH#authapp") {
-          return { Item: { PK: "AUTH#authapp", SK: "META", name: "authapp", db: "api", project: "authapp", host: "alb.example:8100", port: 8100, stack: "keel-auth-authapp", taskSgId: "sg-auth", url: "http://alb.example:8100", createdAt: "t" } };
+          return { Item: { PK: "AUTH#authapp", SK: "META", name: "authapp", db: "api", project: "authapp", host: "alb.example:8100", port: 8100, stack: "bareboat-auth-authapp", taskSgId: "sg-auth", url: "http://alb.example:8100", createdAt: "t" } };
         }
         return {};
       }
@@ -55,7 +55,7 @@ function fakeIo(deployStatuses: string[]) {
       const status = deployStatuses[Math.min(statusIdx++, deployStatuses.length - 1)];
       return { Item: { PK: "APP#web", SK: c.input.Key.SK, status, updatedAt: "t" } };
     }
-    if (cmd === "StartBuildCommand") return { build: { id: "keel-build:abc123" } };
+    if (cmd === "StartBuildCommand") return { build: { id: "bareboat-build:abc123" } };
     if (cmd === "CreateStackCommand") {
       createdStacks.add(c.input.StackName);
       return {};
@@ -63,7 +63,7 @@ function fakeIo(deployStatuses: string[]) {
     if (cmd === "DescribeStacksCommand") {
       const name = c.input.StackName as string;
       if (!createdStacks.has(name)) throw Object.assign(new Error("does not exist"), { name: "ValidationError" });
-      const outputs = name === "keel-ingress"
+      const outputs = name === "bareboat-ingress"
         ? { AlbDns: "alb.example", AlbArn: "arn:alb", AlbSgId: "sg-alb" }
         : { Url: "http://alb.example:8001", TaskSgId: "sg-app" };
       return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: Object.entries(outputs).map(([k, v]) => ({ OutputKey: k, OutputValue: v })) }] };
@@ -88,18 +88,18 @@ describe("deployAws", () => {
     }
     const start = calls.find((c) => c.cmd === "StartBuildCommand")!;
     const envs = Object.fromEntries(start.input.environmentVariablesOverride.map((e: any) => [e.name, e.value]));
-    expect(start.input.projectName).toBe("keel-build");
+    expect(start.input.projectName).toBe("bareboat-build");
     expect(envs.APP).toBe("web");
     expect(envs.PORT).toBe("3000");
     expect(envs.DEPLOY_ID).toMatch(/^\d{8}T\d{6}Z$/);
     const queued = calls.find((c) => c.cmd === "PutCommand" && String(c.input.Item.SK).startsWith("DEPLOY#"))!;
     expect(queued.input.Item.status).toBe("queued");
 
-    const ingressCreateIdx = calls.findIndex((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-ingress");
+    const ingressCreateIdx = calls.findIndex((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "bareboat-ingress");
     const startBuildIdx = calls.findIndex((c) => c.cmd === "StartBuildCommand");
     expect(ingressCreateIdx).toBeGreaterThanOrEqual(0);
     expect(ingressCreateIdx).toBeLessThan(startBuildIdx);
-    const appStack = calls.find((c) => c.cmd === "CreateStackCommand" && String(c.input.StackName).startsWith("keel-app-"));
+    const appStack = calls.find((c) => c.cmd === "CreateStackCommand" && String(c.input.StackName).startsWith("bareboat-app-"));
     expect(appStack).toBeDefined();
     const appParams = Object.fromEntries(appStack!.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));
     expect(appParams.DbSgId).toBe("");
@@ -126,14 +126,14 @@ describe("deployAws", () => {
     } finally {
       console.log = orig;
     }
-    const putUrlIdx = calls.findIndex((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/web/env/DATABASE_URL");
+    const putUrlIdx = calls.findIndex((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/bareboat/web/env/DATABASE_URL");
     const startBuildIdx = calls.findIndex((c) => c.cmd === "StartBuildCommand");
     expect(putUrlIdx).toBeGreaterThanOrEqual(0);
     expect(putUrlIdx).toBeLessThan(startBuildIdx);
     // apps get encrypt-without-verify — RDS certs chain to Amazon's CA the image doesn't trust
     expect(calls[putUrlIdx].input.Value).toBe("postgres://api:pw@db.example:5432/api?sslmode=no-verify");
 
-    const appStack = calls.find((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "keel-app-web");
+    const appStack = calls.find((c) => c.cmd === "CreateStackCommand" && c.input.StackName === "bareboat-app-web");
     const appParams = Object.fromEntries(appStack!.input.Parameters.map((p: any) => [p.ParameterKey, p.ParameterValue]));
     expect(appParams.DbSgId).toBe("sg-db");
     expect(calls.some((c) => c.cmd === "AuthorizeSecurityGroupIngressCommand")).toBe(false);
@@ -149,14 +149,14 @@ describe("deployAws", () => {
     } finally {
       console.log = orig;
     }
-    const put = calls.find((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/web/env/DATABASE_URL");
+    const put = calls.find((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/bareboat/web/env/DATABASE_URL");
     expect(put!.input.Value).toBe("postgres://api:pw@db.example:5432/api?sslmode=verify-full&sslrootcert=/rds-ca.pem");
   });
 
   it("deployAws with a missing db fails fast", async () => {
     const { calls, io } = fakeIo(["queued", "building", "live"]);
     const dbCfg = { ...cfg, db: "missing" };
-    await expect(deployAws(dbCfg, io)).rejects.toThrow(/keel db create missing/);
+    await expect(deployAws(dbCfg, io)).rejects.toThrow(/bareboat db create missing/);
     expect(calls.some((c) => c.cmd === "StartBuildCommand")).toBe(false);
   });
 
@@ -170,8 +170,8 @@ describe("deployAws", () => {
     } finally {
       console.log = orig;
     }
-    const gotrueIdx = calls.findIndex((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/web/env/GOTRUE_URL");
-    const jwtIdx = calls.findIndex((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/keel/web/env/JWT_SECRET");
+    const gotrueIdx = calls.findIndex((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/bareboat/web/env/GOTRUE_URL");
+    const jwtIdx = calls.findIndex((c) => c.cmd === "PutParameterCommand" && c.input.Name === "/bareboat/web/env/JWT_SECRET");
     const startBuildIdx = calls.findIndex((c) => c.cmd === "StartBuildCommand");
     expect(gotrueIdx).toBeGreaterThanOrEqual(0);
     expect(jwtIdx).toBeGreaterThanOrEqual(0);
@@ -181,7 +181,7 @@ describe("deployAws", () => {
   it("deployAws with a missing auth fails fast", async () => {
     const { calls, io } = fakeIo(["queued", "building", "live"]);
     const authCfg = { ...cfg, auth: "missing" };
-    await expect(deployAws(authCfg, io)).rejects.toThrow(/keel auth create missing/);
+    await expect(deployAws(authCfg, io)).rejects.toThrow(/bareboat auth create missing/);
     expect(calls.some((c) => c.cmd === "StartBuildCommand")).toBe(false);
   });
 });
@@ -257,20 +257,20 @@ describe("statusAws", () => {
 });
 
 describe("envAws", () => {
-  it("set writes a PutParameterCommand under /keel/<app>/env/<KEY>", async () => {
+  it("set writes a PutParameterCommand under /bareboat/<app>/env/<KEY>", async () => {
     const calls: Array<{ cmd: string; input: any }> = [];
     const send = async (c: any) => { calls.push({ cmd: c.constructor.name, input: c.input }); return {}; };
     const io = { gcfg, clients: { ddb: { send }, ssm: { send }, codebuild: { send } } as any, sleep: async () => {} };
     await envAws("set", ["A=1"], cfg, io);
     const put = calls.find((c) => c.cmd === "PutParameterCommand")!;
-    expect(put.input.Name).toBe("/keel/web/env/A");
+    expect(put.input.Name).toBe("/bareboat/web/env/A");
     expect(put.input.Value).toBe("1");
   });
 
   it("list prints KEY=VALUE from GetParametersByPath", async () => {
     const send = async (c: any) => {
       if (c.constructor.name === "GetParametersByPathCommand") {
-        return { Parameters: [{ Name: "/keel/web/env/A", Value: "1" }] };
+        return { Parameters: [{ Name: "/bareboat/web/env/A", Value: "1" }] };
       }
       return {};
     };
@@ -291,7 +291,7 @@ describe("envAws", () => {
     const send = async (c: any) => { calls.push({ cmd: c.constructor.name, input: c.input }); return {}; };
     const io = { gcfg, clients: { ddb: { send }, ssm: { send }, codebuild: { send } } as any, sleep: async () => {} };
     await envAws("unset", ["A"], cfg, io);
-    expect(calls.some((c) => c.cmd === "DeleteParameterCommand" && c.input.Name === "/keel/web/env/A")).toBe(true);
+    expect(calls.some((c) => c.cmd === "DeleteParameterCommand" && c.input.Name === "/bareboat/web/env/A")).toBe(true);
   });
 });
 
@@ -316,12 +316,12 @@ describe("deployAws auto-register", () => {
         const status = deployStatuses[Math.min(statusIdx++, deployStatuses.length - 1)];
         return { Item: { PK: "APP#web", SK: c.input.Key.SK, status, updatedAt: "t" } };
       }
-      if (cmd === "StartBuildCommand") return { build: { id: "keel-build:abc123" } };
+      if (cmd === "StartBuildCommand") return { build: { id: "bareboat-build:abc123" } };
       if (cmd === "CreateStackCommand") { createdStacks.add(c.input.StackName); return {}; }
       if (cmd === "DescribeStacksCommand") {
         const name = c.input.StackName as string;
         if (!createdStacks.has(name)) throw Object.assign(new Error("does not exist"), { name: "ValidationError" });
-        const outputs = name === "keel-ingress"
+        const outputs = name === "bareboat-ingress"
           ? { AlbDns: "alb.example", AlbArn: "arn:alb", AlbSgId: "sg-alb", TaskSgId: "sg-task" }
           : { Url: "http://alb.example:8001" };
         return { Stacks: [{ StackStatus: "CREATE_COMPLETE", Outputs: Object.entries(outputs).map(([k, v]) => ({ OutputKey: k, OutputValue: v })) }] };
@@ -357,7 +357,7 @@ describe("logsAws", () => {
     expect(text).toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("targets /keel/apps filtered by app name", async () => {
+  it("targets /bareboat/apps filtered by app name", async () => {
     const { calls, io } = fakeIo([]);
     const orig = console.log;
     console.log = () => {};
@@ -368,7 +368,7 @@ describe("logsAws", () => {
     }
     const filterCmd = calls.find((c) => c.cmd === "FilterLogEventsCommand");
     expect(filterCmd).toBeDefined();
-    expect(filterCmd!.input.logGroupName).toBe("/keel/apps");
+    expect(filterCmd!.input.logGroupName).toBe("/bareboat/apps");
     expect(filterCmd!.input.logStreamNamePrefix).toBe("web");
   });
 });
@@ -386,7 +386,7 @@ function fakeDestroyIo(opts: { registered?: boolean } = {}) {
     if (cmd === "DescribeStacksCommand") return { Stacks: [{ StackStatus: "DELETE_COMPLETE" }] };
     if (cmd === "QueryCommand") return { Items: [{ PK: "APP#web", SK: "META" }, { PK: "APP#web", SK: "DEPLOY#x" }] };
     if (cmd === "GetParametersByPathCommand") {
-      return { Parameters: [{ Name: "/keel/web/webhook-secret" }, { Name: "/keel/web/env/API_KEY" }] };
+      return { Parameters: [{ Name: "/bareboat/web/webhook-secret" }, { Name: "/bareboat/web/env/API_KEY" }] };
     }
     return {};
   };
@@ -406,7 +406,7 @@ describe("destroyAws", () => {
     }
     const del = calls.find((c) => c.cmd === "DeleteStackCommand");
     expect(del).toBeDefined();
-    expect(del!.input.StackName).toBe("keel-app-web");
+    expect(del!.input.StackName).toBe("bareboat-app-web");
   });
 
   it("deletes ddb records and ssm params", async () => {
@@ -438,8 +438,8 @@ describe("destroyAws", () => {
       if (cmd === "DescribeStacksCommand") return { Stacks: [{ StackStatus: "DELETE_COMPLETE" }] };
       if (cmd === "QueryCommand") return { Items: [] };
       if (cmd === "GetParametersByPathCommand") {
-        if (!c.input.NextToken) return { Parameters: [{ Name: "/keel/web/webhook-secret" }], NextToken: "page2" };
-        return { Parameters: [{ Name: "/keel/web/env/API_KEY" }] };
+        if (!c.input.NextToken) return { Parameters: [{ Name: "/bareboat/web/webhook-secret" }], NextToken: "page2" };
+        return { Parameters: [{ Name: "/bareboat/web/env/API_KEY" }] };
       }
       return {};
     };

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateAppConfig, loadAppConfig, saveAppConfig, type AppConfig } from "../src/config";
 
-const tmp = () => mkdtempSync(join(tmpdir(), "keel-test-"));
+const tmp = () => mkdtempSync(join(tmpdir(), "bareboat-test-"));
 
 describe("validateAppConfig", () => {
   it("accepts a valid local config", () => {
@@ -61,8 +61,8 @@ describe("load/save", () => {
     expect(cfg.healthPath).toBe("/");
   });
 
-  it("throws a keel-new hint when keel.json is missing", () => {
-    expect(() => loadAppConfig(tmp())).toThrow(/keel new/);
+  it("throws a bareboat-new hint when bareboat.json is missing", () => {
+    expect(() => loadAppConfig(tmp())).toThrow(/bareboat new/);
   });
 
   it("throws on invalid stored config", () => {
